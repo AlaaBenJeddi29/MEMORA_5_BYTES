@@ -25,6 +25,7 @@ urlpatterns = [
     path("admin/", admin.site.urls),
 
     # API routes, one namespace per app.
+    path("api/accounts/", include("apps.accounts.urls")),
     path("api/journal/", include("apps.journal.urls")),
     path("api/audio/", include("apps.audio.urls")),
     path("api/summaries/", include("apps.summaries.urls")),
