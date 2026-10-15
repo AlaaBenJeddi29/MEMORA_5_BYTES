@@ -4,8 +4,10 @@ A private, multimodal personal journal. MEMORA lets a single user capture
 their life as **text entries, voice memos, photos, and the people around
 them**, and — later on — get AI-generated summaries of it all.
 
-This repository currently contains a **backend scaffold only**. There are
-no business features yet: no models, no API endpoints, no AI calls.
+This repository currently contains a **backend scaffold plus the shared
+accounts / session-authentication foundation**. The five business modules
+(journal, audio, summaries, media, people) are still empty — no models and
+no endpoints yet — and there are no AI calls.
 
 - **Backend:** Django 5 + Django REST Framework
 - **Database (local dev):** SQLite
@@ -26,7 +28,7 @@ MEMORA/
 │   ├── urls.py               # Root URL routes
 │   ├── wsgi.py / asgi.py     # Server entry points
 ├── apps/                     # All local Django apps live under this package
-│   ├── accounts/             # Users & profiles
+│   ├── accounts/             # Users & session authentication
 │   ├── journal/              # Text journal entries
 │   ├── audio/                # Voice memos / recordings
 │   ├── summaries/            # AI-generated summaries (future)
@@ -123,17 +125,34 @@ Open `http://127.0.0.1:8000/` in your browser. Press `Ctrl+C` to stop.
 
 ---
 
-## URLs available in this scaffold
+## URLs available
 
 | URL | What it is |
 | --- | --- |
 | `/admin/` | Django admin site (built-in). |
-| `/api/accounts/` | Accounts API (no endpoints yet). |
-| `/api/journal/` | Journal API (no endpoints yet). |
-| `/api/audio/` | Audio API (no endpoints yet). |
-| `/api/summaries/` | Summaries API (no endpoints yet). |
-| `/api/media/` | Media library API (no endpoints yet). |
-| `/api/people/` | People API (no endpoints yet). |
+| `/api/accounts/` | Accounts API — session authentication (see below). |
+| `/api/journal/` | Journal API — no endpoints yet (planned). |
+| `/api/audio/` | Audio API — no endpoints yet (planned). |
+| `/api/summaries/` | Summaries API — no endpoints yet (planned). |
+| `/api/media/` | Media library API — no endpoints yet (planned). |
+| `/api/people/` | People API — no endpoints yet (planned). |
+
+### Accounts / authentication endpoints
+
+Session-based authentication: a Django session cookie plus CSRF protection.
+No tokens and no extra dependencies.
+
+| Method | Path | Auth | What it does |
+| --- | --- | --- | --- |
+| `POST` | `/api/accounts/register/` | public | Create a user. Never grants staff/superuser. |
+| `POST` | `/api/accounts/login/` | public | Authenticate and start a session. |
+| `POST` | `/api/accounts/logout/` | required | End the current session. |
+| `GET` | `/api/accounts/me/` | required | Return the authenticated user's own data. |
+| `GET` | `/api/accounts/csrf/` | public | Set the `csrftoken` cookie for the frontend. |
+
+While authenticated, unsafe requests (`POST`/`PUT`/`PATCH`/`DELETE`) must
+echo the `csrftoken` cookie back in the `X-CSRFToken` header and be sent
+with credentials from the browser.
 
 ---
 
@@ -146,6 +165,7 @@ secret is committed to this repository — only placeholder names.
 
 ## What's intentionally NOT here yet
 
-Models, API endpoints, serializers, authentication flows, AI summarization,
-cloud storage, and face recognition. Those come in later milestones. See
-`docs/TEAM_WORKFLOW.md` for how we'll build them together.
+The five business modules are still empty — no models, no serializers, and
+no endpoints yet for journal, audio, summaries, media, or people. AI
+summarization, cloud storage, and face recognition are also not
+implemented. See `docs/TEAM_WORKFLOW.md` for how we'll build them together.
