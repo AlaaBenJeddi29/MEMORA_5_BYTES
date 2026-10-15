@@ -1,22 +1,38 @@
 """
-URL configuration for config project.
+Root URL configuration for the MEMORA project.
 
-The `urlpatterns` list routes URLs to views. For more information please see:
-    https://docs.djangoproject.com/en/5.2/topics/http/urls/
-Examples:
-Function views
-    1. Add an import:  from my_app import views
-    2. Add a URL to urlpatterns:  path('', views.home, name='home')
-Class-based views
-    1. Add an import:  from other_app.views import Home
-    2. Add a URL to urlpatterns:  path('', Home.as_view(), name='home')
-Including another URLconf
-    1. Import the include() function: from django.urls import include, path
-    2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
+Everything is mounted from here:
+
+    /admin/            Django's built-in admin site
+    /api/accounts/     accounts app
+    /api/journal/      journal app
+    /api/audio/        audio app
+    /api/summaries/    summaries app
+    /api/media/        media_library app
+    /api/people/       people app
+
+Each app owns its own ``urls.py``; this file only wires them together.
+
+Docs: https://docs.djangoproject.com/en/5.2/topics/http/urls/
 """
+
+from django.conf import settings
+from django.conf.urls.static import static
 from django.contrib import admin
-from django.urls import path
+from django.urls import include, path
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
+    path("admin/", admin.site.urls),
+
+    # API routes, one namespace per app.
+    path("api/journal/", include("apps.journal.urls")),
+    path("api/audio/", include("apps.audio.urls")),
+    path("api/summaries/", include("apps.summaries.urls")),
+    path("api/media/", include("apps.media_library.urls")),
+    path("api/people/", include("apps.people.urls")),
 ]
+
+# While DEBUG = True, let Django serve uploaded media files during
+# development. In production a real web server or cloud storage does this.
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
