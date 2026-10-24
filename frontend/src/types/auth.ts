@@ -5,6 +5,8 @@ export interface User {
   email: string
   first_name: string
   last_name: string
+  /** True for staff accounts, which alone may enter the admin area. */
+  is_staff: boolean
   /** ISO-8601 timestamp (UTC). */
   date_joined: string
 }

@@ -6,7 +6,15 @@ frontend and tests never hard-code paths.
 
 from django.urls import path
 
-from .views import CsrfView, LoginView, LogoutView, MeView, RegisterView
+from .views import (
+    CsrfView,
+    LoginView,
+    LogoutView,
+    MeView,
+    RegisterView,
+    user_detail,
+    user_list,
+)
 
 urlpatterns = [
     path("register/", RegisterView.as_view(), name="accounts-register"),
@@ -14,4 +22,6 @@ urlpatterns = [
     path("logout/", LogoutView.as_view(), name="accounts-logout"),
     path("me/", MeView.as_view(), name="accounts-me"),
     path("csrf/", CsrfView.as_view(), name="accounts-csrf"),
+    path("users/", user_list, name="accounts-user-list"),
+    path("users/<int:pk>/", user_detail, name="accounts-user-detail"),
 ]

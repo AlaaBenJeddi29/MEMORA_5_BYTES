@@ -3,6 +3,7 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
+from rest_framework.test import APIClient
 
 from apps.media_library.models import MediaFile
 
@@ -231,3 +232,81 @@ class PeopleIsolationTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertIn('/admin/login/', response.url)
+
+
+class PeopleApiTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='alice', password='secret')
+        self.other_user = User.objects.create_user(username='bob', password='secret')
+
+        self.person = Person.objects.create(owner=self.user, name='Alice')
+        self.other_person = Person.objects.create(owner=self.other_user, name='Bob')
+
+        self.photo = create_photo(self.user, 'alice.png')
+        self.other_photo = create_photo(self.other_user, 'bob.png')
+
+        self.face = DetectedFace.objects.create(
+            photo=self.photo,
+            encoding=[0.0] * 128,
+            bounding_box=BOUNDING_BOX,
+        )
+        self.other_face = DetectedFace.objects.create(
+            photo=self.other_photo,
+            encoding=[0.0] * 128,
+            bounding_box=BOUNDING_BOX,
+        )
+
+        self.client = APIClient()
+        self.client.force_login(self.user)
+
+    def test_person_list_is_filtered_by_user(self):
+        response = self.client.get(reverse('people-list'))
+
+        self.assertEqual(response.status_code, 200)
+        names = [person['name'] for person in response.json()]
+        self.assertEqual(names, ['Alice'])
+
+    def test_person_create_rejects_duplicate_name(self):
+        response = self.client.post(reverse('people-list'), {'name': 'Alice'}, format='json')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('name', response.json())
+
+        response = self.client.post(reverse('people-list'), {'name': 'Alicia'}, format='json')
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(
+            Person.objects.filter(owner=self.user, name='Alicia').exists()
+        )
+
+    def test_face_patch_assigns_person(self):
+        response = self.client.patch(
+            reverse('people-face-detail', args=[self.face.pk]),
+            {'person': self.person.pk},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['person']['id'], self.person.pk)
+        self.face.refresh_from_db()
+        self.assertEqual(self.face.person, self.person)
+
+    def test_api_is_isolated_between_users(self):
+        detail_url = reverse('people-detail', args=[self.other_person.pk])
+        self.assertEqual(self.client.get(detail_url).status_code, 404)
+        self.assertEqual(self.client.delete(detail_url).status_code, 404)
+        self.assertTrue(Person.objects.filter(pk=self.other_person.pk).exists())
+
+        response = self.client.patch(
+            reverse('people-face-detail', args=[self.face.pk]),
+            {'person': self.other_person.pk},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 404)
+
+        response = self.client.patch(
+            reverse('people-face-detail', args=[self.other_face.pk]),
+            {'person': self.person.pk},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 404)

@@ -17,6 +17,16 @@ export function AdminLayout() {
           <nav aria-label="Admin">
             <ul className="nav">
               <li>
+                <Link className="nav__link nav__link--on-dark" to="/admin">
+                  Overview
+                </Link>
+              </li>
+              <li>
+                <Link className="nav__link nav__link--on-dark" to="/admin/users">
+                  Users
+                </Link>
+              </li>
+              <li>
                 <Link className="nav__link nav__link--on-dark" to="/app">
                   Back to app
                 </Link>

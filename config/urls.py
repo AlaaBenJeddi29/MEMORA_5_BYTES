@@ -34,8 +34,7 @@ urlpatterns = [
     path("api/audio/", include("apps.audio.urls")),
     path("api/summaries/", include("apps.summaries.urls")),
     path("api/media/", include("apps.media_library.urls")),
-    # The API namespace stays separate from the HTML pages namespace.
-    path("api/people/", include("apps.people.urls", namespace="api_people")),
+    path("api/people/", include("apps.people.api_urls")),
 ]
 
 # While DEBUG = True, let Django serve uploaded media files during

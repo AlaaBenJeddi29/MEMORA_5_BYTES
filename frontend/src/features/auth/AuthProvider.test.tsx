@@ -12,6 +12,7 @@ const USER = {
   email: 'ada@example.com',
   first_name: '',
   last_name: '',
+  is_staff: false,
   date_joined: '2024-01-01T00:00:00Z',
 }
 
