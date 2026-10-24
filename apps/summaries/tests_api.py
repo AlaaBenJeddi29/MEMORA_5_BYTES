@@ -286,6 +286,63 @@ class SummaryDetailTests(SummaryAPITestCase):
         generate_summary.assert_not_called()
 
 
+class MockJournalEntryEndpointTests(SummaryAPITestCase):
+    """The temporary picker endpoint must stay read-only and content-free."""
+
+    def test_route_is_module3_scoped(self):
+        self.assertEqual(
+            reverse("summaries-mock-journal-entries"),
+            "/api/summaries/mock-journal-entries/",
+        )
+
+    def test_list_requires_authentication(self):
+        self.client.logout()
+
+        response = self.client.get(reverse("summaries-mock-journal-entries"))
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_list_returns_only_safe_fixture_fields(self):
+        response = self.client.get(reverse("summaries-mock-journal-entries"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            [item["id"] for item in response.data],
+            [900001, 900002, 900003],
+        )
+        for item in response.data:
+            self.assertEqual(set(item.keys()), {"id", "title", "created_at"})
+            self.assertNotIn("content", item)
+            self.assertTrue(item["title"])
+        # Listing fixtures never persists summaries or journal entries.
+        self.assertEqual(Summary.objects.count(), 0)
+
+    def test_endpoint_is_read_only(self):
+        url = reverse("summaries-mock-journal-entries")
+
+        for method in ("post", "put", "patch", "delete"):
+            with self.subTest(method=method):
+                response = getattr(self.client, method)(url, {}, format="json")
+                self.assertEqual(
+                    response.status_code,
+                    status.HTTP_405_METHOD_NOT_ALLOWED,
+                )
+
+    def test_no_detail_route_can_read_an_arbitrary_mock_id(self):
+        response = self.client.get(
+            "/api/summaries/mock-journal-entries/900001/"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    @patch("apps.summaries.views.generate_summary")
+    def test_listing_never_calls_gemini(self, generate_summary):
+        response = self.client.get(reverse("summaries-mock-journal-entries"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        generate_summary.assert_not_called()
+
+
 class SummaryGenerateTests(SummaryAPITestCase):
     def test_generate_route_is_not_swallowed_by_detail(self):
         self.assertEqual(

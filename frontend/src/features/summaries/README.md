@@ -21,11 +21,10 @@ AI-generated recaps of journal entries (Module 3).
 | `components/SummaryDetailDialog.tsx` | Read-only view of all summary fields. |
 | `components/SummaryFormDialog.tsx` | Shared create/edit form with client validation. |
 | `components/DeleteSummaryDialog.tsx` | Destructive confirmation. |
-| `components/GenerateSummaryDialog.tsx` | Mock entry picker; posts only the entry ID. |
+| `components/GenerateSummaryDialog.tsx` | Loads the mock entry picker; posts only the entry ID. |
 | `summaryForm.ts` | Validation mirroring the backend field limits. |
-| `mockJournalEntries.ts` | **Temporary** UI mirror of the backend fixtures (IDs 900001–900003). |
 | `src/services/summaries.ts` | API calls on top of the shared `apiClient`. |
-| `src/types/summaries.ts` | `Summary`, `SummaryInput`, `GenerateSummaryInput`. |
+| `src/types/summaries.ts` | `Summary`, `SummaryInput`, `MockJournalEntryOption`, `GenerateSummaryInput`. |
 
 ## API usage
 
@@ -33,6 +32,7 @@ AI-generated recaps of journal entries (Module 3).
 - `POST /api/summaries/` — manual create; `owner` comes from the session.
 - `PATCH /api/summaries/{id}/` — update; only the owner can reach it.
 - `DELETE /api/summaries/{id}/` — delete; only the owner can reach it.
+- `GET /api/summaries/mock-journal-entries/` — temporary read-only picker.
 - `POST /api/summaries/generate/` — body is `{ "journal_entry_id": 900001 }`.
 
 All requests use `src/services/apiClient.ts`, so the session cookie and
@@ -41,10 +41,17 @@ All requests use `src/services/apiClient.ts`, so the session cookie and
 
 ## Mock journal entries
 
-The backend has no journal-entry list endpoint yet, so
-`mockJournalEntries.ts` mirrors `apps/summaries/mock_journal_entries.py`. It is
-display data only: Django resolves the entry and its content. Remove this file
-once Module 1 provides a real endpoint.
+The picker calls `GET /api/summaries/mock-journal-entries/`, which returns only
+`id`, `title`, and `created_at` for the development fixtures. There is no
+frontend fixture copy, so the backend stays the single source of truth.
+Generation sends only the selected ID; Django loads the entry content and calls
+Gemini server-side.
+
+**Replacement point:** `apps/summaries/journal_provider.py`. Swap the
+`journal_provider` singleton from `MockJournalProvider` to a provider backed by
+Module 1's real `JournalEntry` model once its model/API contract and migrations
+are agreed. Nothing in this feature or in the views needs to change if the new
+provider implements `JournalEntryProvider`.
 
 ## Tests
 

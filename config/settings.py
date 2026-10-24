@@ -192,6 +192,14 @@ CORS_ALLOWED_ORIGINS = env_list(
 )
 CORS_ALLOW_CREDENTIALS = True
 
+# Unsafe requests from the separate React origin (POST/PATCH/DELETE) are
+# rejected by Django's CSRF check unless that origin is trusted. Keep this in
+# sync with CORS_ALLOWED_ORIGINS; both are development defaults.
+CSRF_TRUSTED_ORIGINS = env_list(
+    "DJANGO_CSRF_TRUSTED_ORIGINS",
+    "http://localhost:3000,http://127.0.0.1:3000",
+)
+
 
 # Google Gemini (used by apps.summaries.services.gemini).
 # These values stay on the server: the API key is never sent to the frontend.

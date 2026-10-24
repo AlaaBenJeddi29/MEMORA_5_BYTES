@@ -24,3 +24,13 @@ export interface SummaryInput {
 export interface GenerateSummaryInput {
   journal_entry_id: number
 }
+
+/**
+ * Safe picker shape from GET /api/summaries/mock-journal-entries/.
+ * Temporary Module 3 fixtures; no journal content is returned.
+ */
+export interface MockJournalEntryOption {
+  id: number
+  title: string
+  created_at: string
+}

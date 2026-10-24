@@ -266,9 +266,9 @@ Anonymous → `403`:
 
 | | |
 | --- | --- |
-| **Auth** | Required (`IsAuthenticated`) |
+| **Auth** | None — this doubles as the SPA's session probe |
 | **Ownership** | Returns **only** `request.user` — no id parameter exists |
-| **Response** | `200` + the caller's user object |
+| **Response** | `200` + the caller's user object, or `204` when signed out |
 
 Response `200`:
 ```json
@@ -281,7 +281,8 @@ Response `200`:
   "date_joined": "2026-10-15T17:38:36.271891Z"
 }
 ```
-Anonymous → `403` (`{"detail": "Authentication credentials were not provided."}`).
+Anonymous → `204 No Content` (no body), so the SPA can check auth state
+without treating a signed-out visitor as an error.
 `PUT`/`PATCH`/`DELETE` → `405` (only `GET` exists today).
 
 ### 2.5 `GET /api/accounts/csrf/`
@@ -387,6 +388,33 @@ Upload errors → `400` (`{"file": ["File too large. Maximum size is 25 MB."]}`)
 - Requesting a range with **no owned entries** → `400`
   `{"non_field_errors": ["No entries found for the requested period."]}`.
 - AI failures never leak internals: `{"status": "failed", "error": "Summarization failed."}`.
+
+#### Implemented Module 3 shape (temporary journal source)
+
+The current implementation differs from the async proposal above and will be
+reconciled when Module 1 lands:
+
+| Method | Path | Auth | Notes |
+| --- | --- | --- | --- |
+| `GET` | `/api/summaries/` | Required | Caller's summaries only |
+| `POST` | `/api/summaries/` | Required | Manual create; owner from session |
+| `PATCH` | `/api/summaries/{id}/` | Required | 404 if not owner |
+| `DELETE` | `/api/summaries/{id}/` | Required | 404 if not owner |
+| `GET` | `/api/summaries/mock-journal-entries/` | Required | **Temporary**, read-only picker |
+| `POST` | `/api/summaries/generate/` | Required | Body `{"journal_entry_id": 900001}` |
+
+`mock-journal-entries/` returns only `id`, `title`, and `created_at`; it never
+exposes journal content and supports `GET` only (other verbs → `405`). The
+fixtures are not stored in SQLite, have no detail route, and cannot be created,
+edited, or deleted through the API. Generation accepts only the ID; the server
+resolves the content from the provider and calls Gemini.
+
+**Replacement point:** `apps/summaries/journal_provider.py`. Once Module 1's
+`JournalEntry` model/API contract and migrations are agreed, implement
+`JournalEntryProvider` against it (filtering by `user`) and replace the
+`journal_provider` singleton. Views, serializers, and the React feature do not
+change. Do not add a `JournalEntry` foreign key to `Summary` before that contract
+exists.
 
 ### 3.5 Media
 

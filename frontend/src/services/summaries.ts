@@ -1,4 +1,9 @@
-import type { GenerateSummaryInput, Summary, SummaryInput } from '../types/summaries'
+import type {
+  GenerateSummaryInput,
+  MockJournalEntryOption,
+  Summary,
+  SummaryInput,
+} from '../types/summaries'
 import { apiRequest } from './apiClient'
 
 /**
@@ -20,6 +25,13 @@ export const summariesApi = {
 
   /** DELETE /api/summaries/{id}/ — delete one owned summary. */
   remove: (id: number) => apiRequest<void>(`/api/summaries/${id}/`, { method: 'DELETE' }),
+
+  /**
+   * GET /api/summaries/mock-journal-entries/ — temporary Module 3 picker.
+   * Returns only id/title/created_at; journal content stays on the server.
+   */
+  listMockJournalEntries: () =>
+    apiRequest<MockJournalEntryOption[]>('/api/summaries/mock-journal-entries/'),
 
   /** POST /api/summaries/generate/ — summarize one mock journal entry. */
   generate: (input: GenerateSummaryInput) =>

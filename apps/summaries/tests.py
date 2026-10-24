@@ -9,6 +9,7 @@ from django.core.exceptions import ValidationError
 from django.test import SimpleTestCase, TestCase, override_settings
 from google.genai import errors
 
+from .journal_provider import JournalEntryNotFound, journal_provider
 from .mock_journal_entries import (
     MOCK_JOURNAL_ENTRIES,
     MockJournalEntryNotFound,
@@ -175,6 +176,40 @@ class MockJournalProviderTests(SimpleTestCase):
         self.assertTrue(
             all(entry.id >= 900000 for entry in MOCK_JOURNAL_ENTRIES)
         )
+
+
+class JournalProviderSeamTests(SimpleTestCase):
+    """The provider seam must expose only fixtures, never arbitrary IDs."""
+
+    def test_list_returns_only_safe_picker_fields(self):
+        options = journal_provider.list_entries(None)
+
+        self.assertEqual(len(options), 3)
+        self.assertEqual({option.id for option in options}, {900001, 900002, 900003})
+        for option in options:
+            self.assertTrue(option.title)
+            self.assertIsNotNone(option.created_at.tzinfo)
+            # Content must never appear in the picker shape.
+            self.assertFalse(hasattr(option, "content"))
+
+    def test_known_fixture_can_be_read_in_full(self):
+        entry = journal_provider.get_entry(None, 900001)
+
+        self.assertEqual(entry.id, 900001)
+        self.assertTrue(entry.content)
+
+    def test_arbitrary_ids_are_rejected(self):
+        for entry_id in (1, 899999, 900004, 123456, "900001", None):
+            with self.subTest(entry_id=entry_id):
+                with self.assertRaises(JournalEntryNotFound):
+                    journal_provider.get_entry(None, entry_id)
+
+    def test_provider_does_not_touch_the_database(self):
+        # This class is a SimpleTestCase, so any ORM access would fail. The
+        # assertion documents that the mock source is the in-memory fixture
+        # tuple, not SQLite.
+        options = journal_provider.list_entries(None)
+        self.assertEqual(len(options), len(MOCK_JOURNAL_ENTRIES))
 
 
 VALID_SUMMARY_PAYLOAD = {

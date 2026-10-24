@@ -17,6 +17,14 @@ const SUMMARY: Summary = {
   updated_at: '2026-10-20T07:50:00Z',
 }
 
+const MOCK_OPTIONS = [
+  {
+    id: 900002,
+    title: 'Project stand-up',
+    created_at: '2026-10-21T09:30:00Z',
+  },
+]
+
 interface FetchCall {
   url: string
   init: RequestInit
@@ -225,6 +233,9 @@ describe('SummariesPage', () => {
         getCount += 1
         return jsonResponse(getCount === 1 ? [] : [generated])
       }
+      if (url.endsWith('/api/summaries/mock-journal-entries/')) {
+        return jsonResponse(MOCK_OPTIONS)
+      }
       if (url.endsWith('/api/summaries/generate/') && method === 'POST') {
         return jsonResponse(generated, 201)
       }
@@ -235,16 +246,23 @@ describe('SummariesPage', () => {
     await screen.findByText('No summaries yet')
 
     fireEvent.click(screen.getByRole('button', { name: 'Generate summary' }))
-    const dialog = screen.getByRole('dialog', { name: 'Generate a summary' })
-    fireEvent.change(within(dialog).getByLabelText(/Journal entry/), {
-      target: { value: '900002' },
-    })
+    const dialog = await screen.findByRole('dialog', { name: 'Generate a summary' })
+    const select = await within(dialog).findByLabelText(/Journal entry/)
+    expect(within(select).getByRole('option', { name: /Project stand-up/ })).toBeTruthy()
+    expect(within(select).queryByRole('option', { name: /Morning walk/ })).toBeNull()
+    fireEvent.change(select, { target: { value: '900002' } })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Generate summary' }))
 
     expect(await screen.findByText('Summary generated.')).toBeTruthy()
     expect(await screen.findByText(generated.summary_text)).toBeTruthy()
 
-    const generate = callsOf(fetchMock).find((call) =>
+    const calls = callsOf(fetchMock)
+    expect(
+      calls.some((call) =>
+        call.url.endsWith('/api/summaries/mock-journal-entries/'),
+      ),
+    ).toBe(true)
+    const generate = calls.find((call) =>
       call.url.endsWith('/api/summaries/generate/'),
     )
     expect(generate?.init.method).toBe('POST')
@@ -262,6 +280,9 @@ describe('SummariesPage', () => {
       if (url.endsWith('/api/summaries/') && method === 'GET') {
         return jsonResponse([])
       }
+      if (url.endsWith('/api/summaries/mock-journal-entries/')) {
+        return jsonResponse(MOCK_OPTIONS)
+      }
       if (url.endsWith('/api/summaries/generate/') && method === 'POST') {
         return jsonResponse(
           { detail: 'Summary generation is not configured on the server.' },
@@ -275,10 +296,9 @@ describe('SummariesPage', () => {
     await screen.findByText('No summaries yet')
 
     fireEvent.click(screen.getByRole('button', { name: 'Generate summary' }))
-    const dialog = screen.getByRole('dialog', { name: 'Generate a summary' })
-    fireEvent.change(within(dialog).getByLabelText(/Journal entry/), {
-      target: { value: '900001' },
-    })
+    const dialog = await screen.findByRole('dialog', { name: 'Generate a summary' })
+    const select = await within(dialog).findByLabelText(/Journal entry/)
+    fireEvent.change(select, { target: { value: '900002' } })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Generate summary' }))
 
     expect(
@@ -291,6 +311,41 @@ describe('SummariesPage', () => {
       (within(dialog).getByRole('button', { name: 'Generate summary' }) as HTMLButtonElement)
         .disabled,
     ).toBe(false)
+  })
+
+  it('retries loading the mock entry choices after a failure', async () => {
+    let entryCalls = 0
+
+    installFetch(({ url, init }) => {
+      const method = init.method ?? 'GET'
+      if (url.endsWith('/api/summaries/') && method === 'GET') {
+        return jsonResponse([])
+      }
+      if (url.endsWith('/api/summaries/mock-journal-entries/')) {
+        entryCalls += 1
+        if (entryCalls === 1) {
+          return jsonResponse({ detail: 'Journal entries are unavailable.' }, 503)
+        }
+        return jsonResponse(MOCK_OPTIONS)
+      }
+      throw new Error(`Unexpected request: ${method} ${url}`)
+    })
+
+    render(<SummariesPage />)
+    await screen.findByText('No summaries yet')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate summary' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Generate a summary' })
+
+    expect(
+      await within(dialog).findByText('Journal entries are unavailable.'),
+    ).toBeTruthy()
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Try again' }))
+
+    const select = await within(dialog).findByLabelText(/Journal entry/)
+    expect(within(select).getByRole('option', { name: /Project stand-up/ })).toBeTruthy()
+    expect(entryCalls).toBe(2)
   })
 
   it('shows a network error and retries loading the list', async () => {

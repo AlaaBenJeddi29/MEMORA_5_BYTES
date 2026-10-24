@@ -64,3 +64,15 @@ class GenerateSummarySerializer(serializers.Serializer):
     """Only the mock journal entry ID is accepted for generation."""
 
     journal_entry_id = serializers.IntegerField(min_value=1)
+
+
+class MockJournalEntrySerializer(serializers.Serializer):
+    """Read-only picker fields for the temporary Module 3 fixtures.
+
+    Deliberately excludes journal content: the picker only needs a title and
+    date, and generation retrieves the full fixture server-side by ID.
+    """
+
+    id = serializers.IntegerField(read_only=True)
+    title = serializers.CharField(read_only=True)
+    created_at = serializers.DateTimeField(read_only=True)

@@ -71,6 +71,26 @@ describe('AuthProvider', () => {
     expect(screen.getByTestId('user').textContent).toBe('ada')
   })
 
+  it('treats 204 from /me/ as signed out', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (String(url).endsWith('/api/accounts/csrf/')) {
+          return jsonResponse({ detail: 'CSRF cookie set.' })
+        }
+        if (String(url).endsWith('/api/accounts/me/')) {
+          return fakeResponse(204)
+        }
+        return jsonResponse({ detail: 'Not found' }, 404)
+      }),
+    )
+
+    renderProvider()
+
+    await waitFor(() => expect(screen.getByTestId('status').textContent).toBe('unauthenticated'))
+    expect(screen.getByTestId('user').textContent).toBe('none')
+  })
+
   it('treats a failing /me/ as signed out without crashing', async () => {
     vi.stubGlobal(
       'fetch',
@@ -156,7 +176,7 @@ describe('AuthProvider', () => {
         if (target.endsWith('/api/accounts/me/')) {
           return signedIn
             ? jsonResponse(USER)
-            : jsonResponse({ detail: 'Authentication credentials were not provided.' }, 403)
+            : fakeResponse(204)
         }
         if (target.endsWith('/api/accounts/logout/')) {
           signedIn = false

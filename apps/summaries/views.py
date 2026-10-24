@@ -15,9 +15,13 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .mock_journal_entries import MockJournalEntryNotFound, get_mock_journal_entry
+from .journal_provider import JournalEntryNotFound, journal_provider
 from .models import Summary
-from .serializers import GenerateSummarySerializer, SummarySerializer
+from .serializers import (
+    GenerateSummarySerializer,
+    MockJournalEntrySerializer,
+    SummarySerializer,
+)
 from .services import (
     SummaryConfigurationError,
     SummaryInputError,
@@ -82,11 +86,27 @@ class SummaryDetailView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+class MockJournalEntryListView(APIView):
+    """Read-only list of temporary Module 3 journal-entry choices.
+
+    This is a development seam, not a journal API: entries are not stored in
+    SQLite and cannot be created, edited, or deleted here. Only the safe
+    picker fields are returned; generation resolves the full fixture by ID.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        entries = journal_provider.list_entries(request.user)
+        return Response(MockJournalEntrySerializer(entries, many=True).data)
+
+
 class SummaryGenerateView(APIView):
     """Generate a summary from an isolated mock journal entry.
 
     The client supplies only ``journal_entry_id``. Journal content always
-    comes from the mock provider, never from the request body.
+    comes from the journal provider (temporarily the mock fixtures), never
+    from the request body.
     """
 
     permission_classes = [IsAuthenticated]
@@ -97,8 +117,8 @@ class SummaryGenerateView(APIView):
         entry_id = request_serializer.validated_data["journal_entry_id"]
 
         try:
-            entry = get_mock_journal_entry(entry_id)
-        except MockJournalEntryNotFound:
+            entry = journal_provider.get_entry(request.user, entry_id)
+        except JournalEntryNotFound:
             return Response(
                 {"detail": "Mock journal entry not found."},
                 status=status.HTTP_404_NOT_FOUND,

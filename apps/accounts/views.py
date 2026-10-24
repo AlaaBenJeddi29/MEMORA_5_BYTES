@@ -38,7 +38,11 @@ from .serializers import LoginSerializer, RegisterSerializer, UserSerializer
 
 
 class RegisterView(APIView):
-    """Create a new user account. Open to anyone; cannot set privileges."""
+    """Create a new user account and start a session.
+
+    Open to anyone; cannot set privileges. Starting the session here matches
+    the SPA, which navigates straight to the app after a successful signup.
+    """
 
     permission_classes = [AllowAny]
 
@@ -46,6 +50,7 @@ class RegisterView(APIView):
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
+        auth_login(request, user)
         return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
 
 
@@ -72,15 +77,18 @@ class LogoutView(APIView):
 
 
 class MeView(APIView):
-    """Return the authenticated user's own data.
+    """Return the session's user, or 204 when there is no session.
 
     There is intentionally no id argument, so a user can never read or
-    modify another user's account through this endpoint.
+    modify another user's account through this endpoint. Returning 204 for an
+    anonymous session lets the SPA probe auth state without a console error.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def get(self, request):
+        if not request.user.is_authenticated:
+            return Response(status=status.HTTP_204_NO_CONTENT)
         return Response(UserSerializer(request.user).data)
 
 
