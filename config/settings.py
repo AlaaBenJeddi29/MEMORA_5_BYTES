@@ -38,6 +38,14 @@ def env_list(name, default=""):
     return [item.strip() for item in os.environ.get(name, default).split(",") if item.strip()]
 
 
+def env_int(name, default):
+    """Read an integer environment variable, falling back on invalid input."""
+    try:
+        return int(os.environ.get(name, "").strip() or default)
+    except ValueError:
+        return default
+
+
 # SECURITY WARNING: keep the secret key secret in production.
 # The fallback below is for local development only.
 SECRET_KEY = os.environ.get(
@@ -183,3 +191,13 @@ CORS_ALLOWED_ORIGINS = env_list(
     "http://localhost:3000,http://127.0.0.1:3000",
 )
 CORS_ALLOW_CREDENTIALS = True
+
+
+# Google Gemini (used by apps.summaries.services.gemini).
+# These values stay on the server: the API key is never sent to the frontend.
+# An empty key or model is allowed at startup and produces a clear
+# configuration error only when generation is attempted.
+
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "").strip()
+GEMINI_TIMEOUT_SECONDS = env_int("GEMINI_TIMEOUT_SECONDS", 30)
