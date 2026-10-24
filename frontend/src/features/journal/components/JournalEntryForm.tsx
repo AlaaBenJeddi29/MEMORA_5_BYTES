@@ -70,6 +70,7 @@ export function JournalEntryForm({ entry, onSave, onCancel, onSubmit }: JournalE
           <TextInput
             {...field}
             name="title"
+            placeholder="Give your entry a title..."
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             disabled={loading}
@@ -78,7 +79,7 @@ export function JournalEntryForm({ entry, onSave, onCancel, onSubmit }: JournalE
       </FormField>
 
       <FormField
-        label="Entry Text"
+        label="What's on your mind?"
         required
         error={fieldErrors.text}
       >
@@ -90,42 +91,47 @@ export function JournalEntryForm({ entry, onSave, onCancel, onSubmit }: JournalE
             onChange={(e) => setText(e.target.value)}
             disabled={loading}
             className="form-textarea"
-            rows={8}
+            rows={10}
+            placeholder="Write your thoughts, feelings, and memories..."
           />
         )}
       </FormField>
 
-      <FormField
-        label="Audio File (optional)"
-        error={fieldErrors.audio_file}
-      >
-        {(field) => (
-          <TextInput
-            {...field}
-            name="audio_file"
-            type="text"
-            value={audioFile}
-            onChange={(e) => setAudioFile(e.target.value)}
-            disabled={loading}
-          />
-        )}
-      </FormField>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+        <FormField
+          label="Sentiment (optional)"
+          error={fieldErrors.sentiment}
+        >
+          {(field) => (
+            <TextInput
+              {...field}
+              name="sentiment"
+              type="text"
+              placeholder="e.g., happy, calm, reflective..."
+              value={sentiment}
+              onChange={(e) => setSentiment(e.target.value)}
+              disabled={loading}
+            />
+          )}
+        </FormField>
 
-      <FormField
-        label="Sentiment (optional)"
-        error={fieldErrors.sentiment}
-      >
-        {(field) => (
-          <TextInput
-            {...field}
-            name="sentiment"
-            type="text"
-            value={sentiment}
-            onChange={(e) => setSentiment(e.target.value)}
-            disabled={loading}
-          />
-        )}
-      </FormField>
+        <FormField
+          label="Audio file (optional)"
+          error={fieldErrors.audio_file}
+        >
+          {(field) => (
+            <TextInput
+              {...field}
+              name="audio_file"
+              type="text"
+              placeholder="Path to audio file..."
+              value={audioFile}
+              onChange={(e) => setAudioFile(e.target.value)}
+              disabled={loading}
+            />
+          )}
+        </FormField>
+      </div>
 
       <FormField
         label="Summary (optional)"
@@ -139,14 +145,15 @@ export function JournalEntryForm({ entry, onSave, onCancel, onSubmit }: JournalE
             onChange={(e) => setSummaryText(e.target.value)}
             disabled={loading}
             className="form-textarea"
-            rows={4}
+            rows={5}
+            placeholder="AI-generated summary or your own notes..."
           />
         )}
       </FormField>
 
       <div className="form-actions">
         <Button type="submit" disabled={loading}>
-          {entry ? 'Save Changes' : 'Create Entry'}
+          {entry ? '💾 Save Changes' : '✍️ Create Entry'}
         </Button>
         <Button type="button" onClick={onCancel} disabled={loading} variant="secondary">
           Cancel

@@ -6,9 +6,13 @@ from .models import JournalEntry
 
 
 class JournalEntrySerializer(serializers.ModelSerializer):
-    """Serializer for JournalEntry model with user auto-set from request."""
+    """Serialize journal entries for API responses and requests."""
 
-    user = serializers.IntegerField(read_only=True)
+    # Read-only fields: set automatically by the backend
+    user = serializers.StringRelatedField(read_only=True)
+    created_at = serializers.DateTimeField(read_only=True)
+
+    # Photos as a list of primary keys (read-only for now; future can allow write)
     photos = serializers.PrimaryKeyRelatedField(
         many=True,
         read_only=True,
@@ -18,24 +22,13 @@ class JournalEntrySerializer(serializers.ModelSerializer):
         model = JournalEntry
         fields = [
             'id',
-            'user',
             'title',
             'text',
             'audio_file',
             'summary_text',
             'sentiment',
             'created_at',
+            'user',
             'photos',
         ]
-        read_only_fields = ['id', 'created_at', 'user', 'photos']
-
-    def validate_title(self, value):
-        """Ensure title is not blank."""
-        if not value or not value.strip():
-            raise serializers.ValidationError('Title cannot be blank.')
-        return value
-
-    def create(self, validated_data):
-        """Inject request.user into create operation."""
-        validated_data['user'] = self.context['request'].user
-        return super().create(validated_data)
+        read_only_fields = ['id', 'created_at', 'user']

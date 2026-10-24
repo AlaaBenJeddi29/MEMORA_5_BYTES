@@ -9,6 +9,7 @@ import type { JournalEntry, JournalPage, JournalSearchParams } from '../../../ty
 import { JournalEntryForm } from '../components/JournalEntryForm'
 import { JournalEntryList } from '../components/JournalEntryList'
 import { JournalSearch } from '../components/JournalSearch'
+import '../journal.css'
 
 export function JournalListPage() {
   useDocumentTitle('Journal · MEMORA')

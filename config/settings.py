@@ -48,7 +48,7 @@ SECRET_KEY = os.environ.get(
 DEBUG = env_bool("DJANGO_DEBUG", default=True)
 
 # Hosts the site is allowed to serve. Defaults cover local development.
-ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost")
+ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost,testserver")
 
 
 # Application definition
@@ -183,3 +183,13 @@ CORS_ALLOWED_ORIGINS = env_list(
     "http://localhost:3000,http://127.0.0.1:3000",
 )
 CORS_ALLOW_CREDENTIALS = True
+
+# CSRF trusted origins for POST requests (when using a proxy)
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+
+# Session cookie configuration for cross-origin requests
+SESSION_COOKIE_SAMESITE = 'Lax'  # Allow cookies for safe cross-origin requests
+CSRF_COOKIE_SAMESITE = 'Lax'     # Allow CSRF cookies for cross-origin requests
