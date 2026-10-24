@@ -90,7 +90,7 @@ ROOT_URLCONF = "config.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        "DIRS": [BASE_DIR / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -129,6 +129,9 @@ AUTH_PASSWORD_VALIDATORS = [
 # MEMORA uses Django's built-in User model for now. No custom
 # authentication is implemented at this stage.
 
+# Les pages HTML protegees renvoient vers la connexion de l'admin.
+LOGIN_URL = "/admin/login/"
+
 
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
@@ -150,7 +153,7 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 # Media files (user uploads: audio, photos, ...)
 # Served by Django only while DEBUG = True (see config/urls.py).
 
-MEDIA_URL = "media/"
+MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
 
