@@ -1,11 +1,15 @@
 """URL routes for the summaries app.
 
-Mounted under ``/api/summaries/`` by ``config/urls.py``. No routes are
-defined yet -- this is a scaffold placeholder.
+Mounted under ``/api/summaries/`` by ``config/urls.py``. The generation route
+is declared before the integer detail route so it can never be swallowed.
 """
 
-from django.urls import path  # noqa: F401  (kept for the first real route)
+from django.urls import path
+
+from .views import SummaryDetailView, SummaryGenerateView, SummaryListCreateView
 
 urlpatterns = [
-    # AI summary endpoints will be added here.
+    path("generate/", SummaryGenerateView.as_view(), name="summaries-generate"),
+    path("", SummaryListCreateView.as_view(), name="summaries-list"),
+    path("<int:pk>/", SummaryDetailView.as_view(), name="summaries-detail"),
 ]
