@@ -73,11 +73,18 @@ Activate it:
 ### 2. Install the dependencies
 
 ```bash
-pip install -r requirements.txt
+pip install --no-deps -r requirements.txt
 ```
 
 This installs everything listed in `requirements.txt` (Django, DRF,
 django-cors-headers, python-dotenv, Pillow, requests, ...).
+
+`face_recognition` declares `dlib>=19.7` in its package metadata, while
+`dlib-bin` provides the same `dlib` module from a precompiled wheel under a
+different distribution name. `--no-deps` prevents pip from trying to build
+`dlib` from source; all dependencies, including transitive ones, are already
+pinned in `requirements.txt`. For the same reason, `pip check` reports `dlib`
+as missing even though `import dlib` works — this is expected.
 
 ### 3. Create your local `.env` file
 
@@ -123,7 +130,7 @@ Open `http://127.0.0.1:8000/` in your browser. Press `Ctrl+C` to stop.
 
 | Command | What it does |
 | --- | --- |
-| `pip install -r requirements.txt` | Install the Python dependencies. |
+| `pip install --no-deps -r requirements.txt` | Install the Python dependencies without building `dlib` from source. |
 | `python manage.py check` | Sanity-check the project for configuration errors. Fast, touches nothing. |
 | `python manage.py migrate` | Apply database migrations (create/update tables). |
 | `python manage.py makemigrations` | Generate migrations after you change a `models.py`. |

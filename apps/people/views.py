@@ -72,12 +72,12 @@ def photo_list(request):
     if request.method == 'POST':
         photo = request.FILES.get('photo')
         if photo is not None:
-            MediaFile.objects.create(owner=request.user, photo=photo)
+            MediaFile.objects.create(owner=request.user, file=photo)
         return redirect('people:photo_list')
 
     photos = MediaFile.objects.filter(
         owner=request.user,
-    ).prefetch_related('faces').order_by('-uploaded_at')
+    ).prefetch_related('faces').order_by('-created_at')
 
     return render(request, 'people/photo_list.html', {'photos': photos})
 

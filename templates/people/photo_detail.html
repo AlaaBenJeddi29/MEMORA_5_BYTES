@@ -7,7 +7,7 @@
 
 <h1>Photo #{{ photo.pk }}</h1>
 
-<p><img src="{{ photo.photo.url }}" alt="Photo {{ photo.pk }}" style="max-width: 100%;"></p>
+<p><img src="{{ photo.file.url }}" alt="Photo {{ photo.pk }}" style="max-width: 100%;"></p>
 
 <form method="post" action="{% url 'people:photo_delete' photo.pk %}">
     {% csrf_token %}
