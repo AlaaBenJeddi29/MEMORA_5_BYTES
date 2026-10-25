@@ -121,6 +121,7 @@ class SummaryListTests(SummaryAPITestCase):
             {"summary_text": "Text", "themes": [f"t{index}" for index in range(9)]},
             {"summary_text": "Text", "mood": "x" * 33},
             {"summary_text": "Text", "journal_entry_id": 0},
+            {"summary_text": "Text", "journal_entry_id": 2**63},
             {"summary_text": "Text", "illustration_prompt": "x" * 1_001},
         ]
 

@@ -12,6 +12,8 @@ from .models import Summary, validate_themes
 
 MAX_SUMMARY_TEXT_LENGTH = 4_000
 MAX_ILLUSTRATION_PROMPT_LENGTH = 1_000
+# Matches Summary.journal_entry_id (PositiveBigIntegerField / SQLite INTEGER).
+MAX_JOURNAL_ENTRY_ID = 2**63 - 1
 
 
 class SummarySerializer(serializers.ModelSerializer):
@@ -20,6 +22,7 @@ class SummarySerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True,
         min_value=1,
+        max_value=MAX_JOURNAL_ENTRY_ID,
     )
     summary_text = serializers.CharField(
         max_length=MAX_SUMMARY_TEXT_LENGTH,
