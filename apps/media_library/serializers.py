@@ -12,7 +12,14 @@ from django.db import transaction
 from PIL import Image, UnidentifiedImageError
 from rest_framework import serializers
 
-from .journal_context import JournalContextNotFound, default_provider
+from apps.journal.models import JournalEntry
+from apps.summaries.models import Summary
+
+from .journal_context import (
+    JournalEntryNotFound,
+    build_journal_prompt,
+    get_journal_entry,
+)
 from .models import MediaFile
 
 logger = logging.getLogger(__name__)
@@ -25,18 +32,6 @@ ALLOWED_IMAGE_FORMATS = {
 
 def _max_prompt_length():
     return settings.MEDIA_GENERATION_MAX_PROMPT_LENGTH
-
-
-def _journal_prompt(context):
-    """Build a minimal prompt from the mock context.
-
-    Only the title is used. Journal body text can contain sensitive personal
-    details, so it is never sent to the image provider. Replace this with an
-    explicitly user-approved prompt when Module 1/3 integration lands.
-    """
-    title = " ".join(context.title.split())
-    text = f'Illustrate this journal memory titled "{title}".'
-    return text[: _max_prompt_length()].rstrip()
 
 
 def _describe_size(max_bytes):
@@ -70,13 +65,22 @@ class SafeMediaImageField(serializers.ImageField):
         return url
 
 
+class MediaJournalEntrySerializer(serializers.ModelSerializer):
+    """Minimal real journal context shown beside a media item."""
+
+    class Meta:
+        model = JournalEntry
+        fields = ["id", "title"]
+        read_only_fields = fields
+
+
 class MediaFileSerializer(serializers.ModelSerializer):
     file = SafeMediaImageField(required=True)
-    journal_entry_id = serializers.IntegerField(
-        required=False,
-        allow_null=True,
-        min_value=1,
-    )
+    journal_entries = MediaJournalEntrySerializer(many=True, read_only=True)
+    journal_entry_id = serializers.SerializerMethodField()
+    summary_id = serializers.IntegerField(read_only=True)
+    provider = serializers.CharField(read_only=True)
+    model = serializers.CharField(read_only=True)
 
     class Meta:
         model = MediaFile
@@ -87,6 +91,10 @@ class MediaFileSerializer(serializers.ModelSerializer):
             "prompt",
             "status",
             "journal_entry_id",
+            "journal_entries",
+            "summary_id",
+            "provider",
+            "model",
             "created_at",
             "updated_at",
         ]
@@ -95,9 +103,18 @@ class MediaFileSerializer(serializers.ModelSerializer):
             "media_type",
             "prompt",
             "status",
+            "journal_entry_id",
+            "journal_entries",
+            "summary_id",
+            "provider",
+            "model",
             "created_at",
             "updated_at",
         ]
+
+    def get_journal_entry_id(self, obj):
+        entries = list(obj.journal_entries.all())
+        return entries[0].pk if entries else None
 
     def validate_file(self, value):
         max_bytes = settings.MEDIA_IMAGE_MAX_BYTES
@@ -141,17 +158,6 @@ class MediaFileSerializer(serializers.ModelSerializer):
         value.seek(0)
         return value
 
-    def validate_journal_entry_id(self, value):
-        if value is None:
-            return value
-        try:
-            default_provider.get_context(value)
-        except JournalContextNotFound as exc:
-            raise serializers.ValidationError(
-                f"Journal context {value} was not found."
-            ) from exc
-        return value
-
     def create(self, validated_data):
         instance = self.Meta.model(**validated_data)
         try:
@@ -184,7 +190,6 @@ class MediaFileDetailSerializer(MediaFileSerializer):
         allow_blank=True,
         trim_whitespace=True,
     )
-    journal_entry_id = serializers.IntegerField(read_only=True)
 
     def validate_prompt(self, value):
         max_length = _max_prompt_length()
@@ -206,15 +211,18 @@ class MediaFileDetailSerializer(MediaFileSerializer):
         ]
 
 
-class MockJournalEntrySerializer(serializers.Serializer):
-    id = serializers.IntegerField(read_only=True)
-    title = serializers.CharField(read_only=True)
-    content = serializers.CharField(read_only=True)
-    created_at = serializers.DateTimeField(read_only=True)
-
-
 class GenerateImageSerializer(serializers.Serializer):
-    """Validate image-generation input without accepting client-owned text."""
+    """Validate real journal/summary context and the local generation request.
+
+    Prompt precedence is deterministic:
+
+    1. an explicit manual prompt;
+    2. the selected summary's stored ``illustration_prompt``;
+    3. context derived from the selected real journal entry.
+
+    Every supplied ID is resolved against the authenticated owner before this
+    method returns, so no foreign record can reach ComfyUI or the database.
+    """
 
     prompt = serializers.CharField(
         required=False,
@@ -222,6 +230,11 @@ class GenerateImageSerializer(serializers.Serializer):
         trim_whitespace=True,
     )
     journal_entry_id = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        min_value=1,
+    )
+    summary_id = serializers.IntegerField(
         required=False,
         allow_null=True,
         min_value=1,
@@ -245,23 +258,109 @@ class GenerateImageSerializer(serializers.Serializer):
         return value
 
     def validate(self, attrs):
-        journal_entry_id = attrs.get("journal_entry_id")
-        context = None
-        if journal_entry_id is not None:
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if user is None or not getattr(user, "is_authenticated", False):
+            raise serializers.ValidationError(
+                {"detail": "Authentication is required."}
+            )
+
+        entry = None
+        entry_id = attrs.get("journal_entry_id")
+        if entry_id is not None:
             try:
-                context = default_provider.get_context(journal_entry_id)
-            except JournalContextNotFound as exc:
+                entry = get_journal_entry(user, entry_id)
+            except JournalEntryNotFound as exc:
                 raise serializers.ValidationError(
-                    {"journal_entry_id": [f"Journal context {journal_entry_id} was not found."]}
+                    {"journal_entry_id": ["Journal entry not found."]}
                 ) from exc
 
-        prompt = attrs.get("prompt")
-        if not prompt:
-            if context is None:
-                raise serializers.ValidationError(
-                    {"prompt": ["Provide a prompt or a journal_entry_id."]}
+        summary = None
+        summary_id = attrs.get("summary_id")
+        if summary_id is not None:
+            try:
+                summary = Summary.objects.select_related("journal_entry").get(
+                    pk=summary_id,
+                    owner=user,
                 )
-            prompt = _journal_prompt(context)
+            except (
+                Summary.DoesNotExist,
+                TypeError,
+                ValueError,
+                OverflowError,
+            ) as exc:
+                raise serializers.ValidationError(
+                    {"summary_id": ["Summary not found."]}
+                ) from exc
+
+            if entry is not None and summary.journal_entry_id != entry.pk:
+                raise serializers.ValidationError(
+                    {
+                        "summary_id": [
+                            "This summary does not belong to the selected "
+                            "journal entry."
+                        ]
+                    }
+                )
+            if entry is None and summary.journal_entry_id is not None:
+                linked_entry = summary.journal_entry
+                if linked_entry.user_id != user.pk:
+                    raise serializers.ValidationError(
+                        {
+                            "summary_id": [
+                                "This summary is linked to an unavailable "
+                                "journal entry."
+                            ]
+                        }
+                    )
+                entry = linked_entry
+
+        prompt = attrs.get("prompt", "").strip()
+        manual_prompt = bool(prompt)
+
+        if not manual_prompt and summary is not None:
+            prompt = (summary.illustration_prompt or "").strip()
+            if not prompt:
+                raise serializers.ValidationError(
+                    {
+                        "summary_id": [
+                            "This summary has no illustration prompt. "
+                            "Generate or update it in Summaries."
+                        ]
+                    }
+                )
+
+        if not prompt and entry is not None:
+            prompt = build_journal_prompt(entry)
+            if not prompt:
+                raise serializers.ValidationError(
+                    {
+                        "journal_entry_id": [
+                            "This journal entry has no title or summary to "
+                            "illustrate."
+                        ]
+                    }
+                )
+
+        if not prompt:
+            raise serializers.ValidationError(
+                {
+                    "prompt": [
+                        "Provide a prompt, a journal entry, or a summary."
+                    ]
+                }
+            )
+
+        max_prompt_length = _max_prompt_length()
+        if len(prompt) > max_prompt_length:
+            raise serializers.ValidationError(
+                {
+                    "prompt": [
+                        f"Keep the prompt to {max_prompt_length} characters "
+                        "or fewer."
+                    ]
+                }
+            )
 
         allowed_sizes = tuple(settings.MEDIA_GENERATION_ALLOWED_SIZES)
         width = attrs.get("width")
@@ -303,4 +402,7 @@ class GenerateImageSerializer(serializers.Serializer):
         attrs["height"] = height
         attrs["steps"] = steps
         attrs["resolved_prompt"] = prompt
+        attrs["journal_entry"] = entry
+        attrs["summary"] = summary
+        attrs["journal_entry_id"] = entry.pk if entry is not None else None
         return attrs

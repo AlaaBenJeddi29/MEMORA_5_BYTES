@@ -1,8 +1,8 @@
 # MEMORA — API Contract
 
-> **Status: proposal for team discussion.** This document describes the target API
-> so the five modules can be built in parallel without drifting. It is **not** a
-> claim that everything here exists yet.
+> **Status: implemented endpoints are marked below; remaining proposals are part
+> of the target API.** The modules were built in parallel, so this document
+> records what the code does today and what is still open.
 
 ## 0. How to read this document
 
@@ -16,15 +16,14 @@ Base URL for local development: `http://127.0.0.1:8000`
 | Area | Mounted prefix today | Implemented endpoints today |
 | --- | --- | --- |
 | Accounts | `/api/accounts/` | register, login, logout, me, csrf |
-| Journal | `/api/journal/` | none (empty router) |
-| Audio | `/api/audio/` | none (empty router) |
-| Summaries | `/api/summaries/` | none (empty router) |
-| Media | `/api/media/` | list, detail, update, delete, upload, generate, mock journal |
+| Journal | `/api/journal/` | entries CRUD + search (§3.2) |
+| Audio | `/api/audio/` | list, upload, detail, patch, delete (§3.3) |
+| Summaries | `/api/summaries/` | list, manual CRUD, generate (§3.4) |
+| Media | `/api/media/` | list, detail, update, delete, upload, generate (§3.5) |
 | People | `/api/people/` | none (empty router) |
 
-`apps/media_library` now has a `MediaFile` model and implemented endpoints.
-The other business apps are still stubs, so the field lists in section 3 remain
-proposals for them.
+Accounts, Journal, Audio, Summaries, and Media are implemented. People and the
+account profile update in §3.1 remain proposals.
 
 ---
 
@@ -72,8 +71,8 @@ Notes:
   on them (there is no session to protect yet).
 - If the SPA is *not* same-origin, the API must allow credentials
   (`CORS_ALLOW_CREDENTIALS = True`, already set) and the SPA origin must be listed
-  in `CORS_ALLOWED_ORIGINS` **and** `CSRF_TRUSTED_ORIGINS` (the latter is not yet
-  configured — see unresolved decisions).
+  in `CORS_ALLOWED_ORIGINS` **and** `CSRF_TRUSTED_ORIGINS` (both are configured
+  in `config/settings.py` for the local development origins).
 
 ### 1.3 Authorization & ownership **[team rule]**
 
@@ -98,10 +97,11 @@ Integer primary keys (`BigAutoField`). Example: `"id": 1`.
 - Business models should expose `created_at` and `updated_at`
   (`auto_now_add=True` / `auto_now=True`). Clients display in local time.
 
-### 1.6 Pagination **[PROPOSED — not configured yet]**
+### 1.6 Pagination
 
-Lists use DRF `PageNumberPagination` with `page_size = 20`, overridable with
-`?page_size=` (max 100) and `?page=`.
+Journal list and search use DRF `PageNumberPagination` (`page_size = 10`,
+overridable with `?page_size=`, max 100). The envelope is
+`count`/`next`/`previous`/`results`.
 
 ```json
 {
@@ -112,8 +112,9 @@ Lists use DRF `PageNumberPagination` with `page_size = 20`, overridable with
 }
 ```
 
-> Currently `settings.REST_FRAMEWORK` has **no** `DEFAULT_PAGINATION_CLASS`, so list
-> endpoints return a bare array. Adding pagination is a shared-settings change.
+> `settings.REST_FRAMEWORK` still has no `DEFAULT_PAGINATION_CLASS`; Journal sets
+> `pagination_class` on its viewset. Audio, Summaries, and Media lists return a
+> bare array. A shared pagination default remains a team decision (§4.5).
 
 ### 1.7 Error format **[convention — matches DRF]**
 
@@ -272,9 +273,9 @@ Anonymous → `403`:
 
 | | |
 | --- | --- |
-| **Auth** | Required (`IsAuthenticated`) |
+| **Auth** | None — this doubles as the SPA's session probe |
 | **Ownership** | Returns **only** `request.user` — no id parameter exists |
-| **Response** | `200` + the caller's user object |
+| **Response** | `200` + the caller's user object, or `204` when signed out |
 
 Response `200`:
 ```json
@@ -287,7 +288,8 @@ Response `200`:
   "date_joined": "2026-10-15T17:38:36.271891Z"
 }
 ```
-Anonymous → `403` (`{"detail": "Authentication credentials were not provided."}`).
+Anonymous → `204 No Content` (no body), so the SPA can check auth state
+without treating a signed-out visitor as an error.
 `PUT`/`PATCH`/`DELETE` → `405` (only `GET` exists today).
 
 ### 2.5 `GET /api/accounts/csrf/`
@@ -303,13 +305,13 @@ Anonymous → `403` (`{"detail": "Authentication credentials were not provided."
 
 ---
 
-## 3. Proposed endpoints **[PROPOSED — not implemented]**
+## 3. Module endpoints **[IMPLEMENTED unless tagged PROPOSED]**
 
-> These are the target for the five modules. Field names are proposals; confirm in
-> review. Shared shape: `id`, `created_at`, `updated_at`, and the owner is implicit
-> (`request.user`).
+> Journal, Audio, Summaries, and Media are implemented. §3.1 (profile update) and
+> §3.6 (People) are still proposals. Shared shape: `id`, `created_at`,
+> `updated_at`, and the owner is implicit (`request.user`).
 
-### 3.1 Accounts — profile
+### 3.1 Accounts — profile **[PROPOSED]**
 
 | Method | Path | Auth | Ownership |
 | --- | --- | --- | --- |
@@ -332,67 +334,156 @@ Anonymous → `403` (`{"detail": "Authentication credentials were not provided."
 > one (`OneToOneField(settings.AUTH_USER_MODEL)`), its extra fields (`display_name`,
 > `avatar`, `bio`, `timezone`) would nest here.
 
-### 3.2 Journal — entries
+### 3.2 Journal — entries **[IMPLEMENTED]**
 
 | Method | Path | Auth | Ownership |
 | --- | --- | --- | --- |
-| `GET` | `/api/journal/entries/` | Required | Only the caller's entries |
+| `GET` | `/api/journal/entries/` | Required | Only the caller's entries; paginated (§1.6) |
 | `POST` | `/api/journal/entries/` | Required | Created for `request.user` |
 | `GET` | `/api/journal/entries/{id}/` | Required | 404 if not owner |
-| `PATCH` | `/api/journal/entries/{id}/` | Required | 404 if not owner |
+| `PUT`/`PATCH` | `/api/journal/entries/{id}/` | Required | 404 if not owner |
 | `DELETE` | `/api/journal/entries/{id}/` | Required | 404 if not owner |
+| `GET` | `/api/journal/entries/search/` | Required | Title/date search over the caller's entries |
 
-Fields (proposal): `id`, `title`, `content`, `entry_date`, `created_at`, `updated_at`.
+Fields: `id`, `title`, `text`, `audio_file`, `summary_text`, `sentiment`,
+`created_at`, `user`, `photos` (read-only media IDs linked through
+`journal_journalentry_photos`). `user` is set from the session and cannot be
+changed by the client. Search accepts `q` (title contains), `date_from`,
+`date_to`, and `page`.
 
 ```json
 // POST request
-{ "title": "Morning", "content": "First coffee...", "entry_date": "2026-10-15" }
+{ "title": "Morning", "text": "First coffee..." }
 // 201 response
-{ "id": 12, "title": "Morning", "content": "First coffee...",
-  "entry_date": "2026-10-15", "created_at": "2026-10-15T08:00:00.000000Z",
-  "updated_at": "2026-10-15T08:00:00.000000Z" }
+{ "id": 12, "title": "Morning", "text": "First coffee...",
+  "audio_file": "", "summary_text": "", "sentiment": "",
+  "created_at": "2026-10-15T08:00:00.000000Z", "user": "ada", "photos": [] }
 ```
 
-> **Path conflict to resolve:** your proposal table used `/api/entries/`, but the
-> project already mounts the app at `/api/journal/`. Recommended:
-> `/api/journal/entries/` (keeps one app = one prefix). See §4.
+Module 4 reuses this API for its journal picker and for owner-scoped generation
+validation. Only `title` and `summary_text` are eligible for an illustration
+prompt; the entry body (`text`) is never sent to ComfyUI.
 
-### 3.3 Audio
+### 3.3 Audio **[IMPLEMENTED]**
 
 | Method | Path | Auth | Ownership |
 | --- | --- | --- | --- |
+| `GET` | `/api/audio/` | Required | Only the caller's entries |
 | `POST` | `/api/audio/` | Required | Upload owned by caller |
 | `GET` | `/api/audio/{id}/` | Required | 404 if not owner |
+| `PATCH` | `/api/audio/{id}/` | Required | 404 if not owner; `transcript`/`summary`, or a new `file` that re-runs the AI |
+| `DELETE` | `/api/audio/{id}/` | Required | 404 if not owner; deletes file too |
 
-Fields (proposal): `id`, `file`, `duration_seconds`, `transcript`, `sentiment`,
-`status` (§1.9), `created_at`. Upload via `multipart/form-data`.
+Fields: `id`, `file` (absolute URL), `duration_seconds`, `transcript`,
+`language_code`, `language_name`, `sentiment`, `sentiment_score`, `summary`,
+`status` (§1.9), `error`, `created_at`, `updated_at`. Upload via
+`multipart/form-data` (max 25 MB; allowed MIME types per §1.8 —
+mp3/wav/webm/mp4/ogg).
+
+AI processing (Groq: Whisper transcription, then an LLM for language detection,
+sentiment analysis and summary) runs on a **background thread**: the upload
+answers immediately with `status: "pending"`, and the client **must** poll
+`GET /api/audio/{id}/` (`pending → processing → succeeded|failed`) until a final
+status. Celery is the production successor; the contract does not change.
+
+Models used (configured in `apps/audio/services.py`, overridable through `.env`):
+`whisper-large-v3-turbo` (ASR, `GROQ_ASR_MODEL`) and `openai/gpt-oss-20b`
+(language, sentiment, summary — `GROQ_LLM_MODEL`). Groq's Whisper endpoint does
+not report the spoken language, so language detection is a separate LLM call over
+the transcript. `response_format: json_object` is requested for the structured
+language/sentiment answers, with a plain-text retry when a model rejects JSON
+mode.
 
 ```json
-// POST (multipart) -> 201
-{ "id": 5, "file": "http://127.0.0.1:8000/media/audio/1/memo.mp3",
-  "duration_seconds": 42.5, "transcript": null, "sentiment": null,
-  "status": "pending", "created_at": "2026-10-15T09:00:00.000000Z" }
+// POST (multipart) -> 201, processing continues in the background
+{ "id": 5, "file": "http://127.0.0.1:8000/media/audio/1/memo.webm",
+  "duration_seconds": null, "transcript": null,
+  "language_code": null, "language_name": null,
+  "sentiment": null, "sentiment_score": null, "summary": null,
+  "status": "pending", "error": null,
+  "created_at": "2026-10-15T09:00:00.000000Z",
+  "updated_at": "2026-10-15T09:00:00.000000Z" }
+
+// GET /api/audio/5/ a few seconds later -> 200
+{ "id": 5, "status": "succeeded", "transcript": "aujourd'hui il fait beau",
+  "language_code": "fr", "language_name": "French",
+  "sentiment": "positive", "sentiment_score": 0.93,
+  "summary": "A note about the nice weather.",
+  "duration_seconds": 3.2, "error": null }
 ```
+
+**Correcting the transcript.** The AI can mishear a word, so
+`PATCH /api/audio/{id}/` accepts `transcript` and `summary` — language, sentiment
+and `status` stay read-only because they are derived from the audio, not typed.
+Body may be partial (JSON), but at least one editable field is required.
+
+```json
+// PATCH /api/audio/5/  { "transcript": "aujourd'hui il fait très beau" } -> 200
+{ "id": 5, "status": "succeeded", "transcript": "aujourd'hui il fait très beau",
+  "summary": "A note about the nice weather.", "…": "same read fields as GET" }
+```
+
+**Replacing the recording.** The same route also accepts `file` as
+`multipart/form-data`, with the upload constraints of §1.8 (25 MB, same MIME
+allow-list). A new recording invalidates everything computed from the old one, so
+`duration_seconds`, `transcript`, `language_code`, `language_name`, `sentiment`,
+`sentiment_score`, `summary` and `error` are cleared, `status` goes back to
+`pending`, the previous file is deleted from storage, and the AI pipeline runs
+again — exactly like `POST /api/audio/`. The answer is the entry in `pending`
+state and the client resumes polling.
+
+`file` cannot be combined with `transcript`/`summary` in one request (the
+replacement empties them): `400`.
+
+```json
+// PATCH /api/audio/5/  multipart: file=prise_2.wav -> 200
+{ "id": 5, "status": "pending", "transcript": null, "summary": null,
+  "language_code": null, "language_name": null, "sentiment": null,
+  "sentiment_score": null, "duration_seconds": null, "error": null,
+  "file": "http://127.0.0.1:8000/media/audio/1/prise_2.wav" }
+```
+
+Only a real upload is accepted: a storage path sent as a string → `400`
+(`{"file": ["Send the recording as a file upload, not a stored path."]}`), so no
+client can attach — and therefore read — another user's saved recording.
+
+An empty payload → `400`
+(`{"non_field_errors": ["Provide at least one editable field: transcript, summary or file."]}`).
+Editing while `status` is `pending`/`processing` → `409`
+(`{"detail": "This memo is still being transcribed. Save your edit once it finishes."}`),
+because the worker would overwrite the correction. A `failed` memo stays editable,
+so the user can type the text by hand or send a better recording.
 
 Upload errors → `400` (`{"file": ["File too large. Maximum size is 25 MB."]}`).
+AI failures never leak internals, but stay actionable:
+`{"status": "failed", "error": "AI processing failed. Please try again."}`, and a
+server without credentials returns
+`{"status": "failed", "error": "AI service not configured. Set GROQ_API_KEY in the server environment."}`.
+Quota/rate-limit, unavailable model, rejected audio format and timeout each get
+their own message; none of them is ever replaced by a fake transcript.
+`Delete` returns `204`.
 
-### 3.4 Summaries
+### 3.4 Summaries **[IMPLEMENTED]**
 
-| Method | Path | Auth | Ownership |
+| Method | Path | Auth | Notes |
 | --- | --- | --- | --- |
-| `POST` | `/api/summaries/generate/` | Required | Only summarizes entries owned by requester |
-| `GET` | `/api/summaries/` | Required | Only the caller's summaries |
+| `GET` | `/api/summaries/` | Required | Caller's summaries only |
+| `POST` | `/api/summaries/` | Required | Manual create; owner from session; optional owned `journal_entry_id` |
+| `PATCH` | `/api/summaries/{id}/` | Required | 404 if not owner; entry must be owned |
+| `DELETE` | `/api/summaries/{id}/` | Required | 404 if not owner |
+| `POST` | `/api/summaries/generate/` | Required | Body `{"journal_entry_id": 12}` |
 
-```json
-// POST request
-{ "date_from": "2026-10-14", "date_to": "2026-10-15" }
-// 202 response (async-shaped)
-{ "id": 8, "status": "pending", "content": null, "error": null,
-  "created_at": "2026-10-15T21:00:00.000000Z" }
-```
-- Requesting a range with **no owned entries** → `400`
-  `{"non_field_errors": ["No entries found for the requested period."]}`.
-- AI failures never leak internals: `{"status": "failed", "error": "Summarization failed."}`.
+The response shape does not include the source journal text. Fields: `id`,
+`owner`, `journal_entry_id`, `summary_text`, `mood`, `themes`,
+`illustration_prompt`, `created_at`, `updated_at`.
+
+Generation accepts only the ID of one of the caller's entries. Django resolves
+it through `apps/summaries/journal_provider.py` (ORM query on
+`journal.JournalEntry` filtered by `user`), so another user's or a missing entry
+returns `404` and is never sent to Gemini. The entry's `title` and `text` are
+sent to the existing Gemini service, and the saved `Summary` stores a nullable
+FK (`journal_entry`, column `journal_entry_id`, `SET_NULL`) to the source entry.
+The React picker reuses Module 1's `GET /api/journal/entries/`.
 
 ### 3.5 Media **[IMPLEMENTED]**
 
@@ -405,13 +496,22 @@ Upload errors → `400` (`{"file": ["File too large. Maximum size is 25 MB."]}`)
 | `PUT` | `/api/media/{id}/` | Required | 404 if not owner; `prompt` required |
 | `DELETE` | `/api/media/{id}/` | Required | 404 if not owner |
 | `POST` | `/api/media/generate/` | Required | Generated media owned by caller |
-| `GET` | `/api/media/mock-journal-entries/` | Required | Read-only fixture; no DB writes |
 
 Fields: `id`, `file`, `media_type` (`original` / `ai_generated`), `prompt`,
-`status` (§1.9), `journal_entry_id`, `created_at`, `updated_at`.
-`owner`, `file`, `media_type`, `status`, and `journal_entry_id` are
-server-controlled; sending them in an update is ignored. `prompt` is the only
-client-writable metadata once a media row exists.
+`status` (§1.9), `journal_entry_id`, `journal_entries`, `summary_id`,
+`provider`, `model`, `created_at`, `updated_at`.
+
+- `journal_entries` is a read-only list of `{ "id", "title" }` for the real
+  Module 1 entries linked through the existing `JournalEntry.photos`
+  many-to-many. `journal_entry_id` is the first linked ID (or `null`).
+- `summary_id` is the nullable Module 3 `Summary` provenance FK. Deleting a
+  summary clears this link (`SET_NULL`) but keeps the image.
+- `provider` and `model` describe how an AI image was produced (`comfyui`
+  and the configured checkpoint name); original uploads leave both empty.
+- `owner`, `file`, `media_type`, `status`, `journal_entry_id`,
+  `journal_entries`, `summary_id`, `provider`, and `model` are
+  server-controlled; sending them in an update is ignored. `prompt` is the only
+  client-writable metadata once a media row exists.
 
 > **Media access model:** API reads and writes are owner-scoped, but the `file`
 > value is an unguessable capability URL
@@ -424,11 +524,12 @@ client-writable metadata once a media row exists.
 
 #### Upload — `POST /api/media/`
 
-`multipart/form-data` with a `file` field and optional `journal_entry_id`.
-Decoded image content is authoritative; JPEG, PNG, and WebP are accepted up to
-the configured byte and pixel limits. Files are stored under a per-user,
-unguessable path and remain byte-for-byte unchanged. Uploads are created as
-`media_type=original`, `status=succeeded`.
+`multipart/form-data` with a single `file` field. Uploads are not attached to a
+journal entry or summary; `journal_entry_id`/`summary_id` sent by a client are
+ignored. Decoded image content is authoritative; JPEG, PNG, and WebP are
+accepted up to the configured byte and pixel limits. Files are stored under a
+per-user, unguessable path and remain byte-for-byte unchanged. Uploads are
+created as `media_type=original`, `status=succeeded`.
 
 > **Upload metadata caveat:** because original uploads are stored unchanged,
 > any EXIF/ICC metadata in the source file (including GPS coordinates and
@@ -445,6 +546,10 @@ unguessable path and remain byte-for-byte unchanged. Uploads are created as
   "prompt": "",
   "status": "succeeded",
   "journal_entry_id": null,
+  "journal_entries": [],
+  "summary_id": null,
+  "provider": "",
+  "model": "",
   "created_at": "2026-10-24T20:15:00.000000Z",
   "updated_at": "2026-10-24T20:15:00.000000Z"
 }
@@ -459,6 +564,7 @@ ComfyUI; React never receives the ComfyUI endpoint or workflow.
 {
   "prompt": "A quiet lake at dawn, watercolor",
   "journal_entry_id": 1,
+  "summary_id": 4,
   "width": 512,
   "height": 512,
   "steps": 20,
@@ -466,17 +572,30 @@ ComfyUI; React never receives the ComfyUI endpoint or workflow.
 }
 ```
 
-- `prompt` is required unless `journal_entry_id` is supplied. The default
-  maximum is 1000 characters and is configurable with
-  `MEDIA_GENERATION_MAX_PROMPT_LENGTH`; the server always re-validates it.
-  The UI shows scene-focused examples and guidance that the local model cannot
-  faithfully recreate a real person's likeness and that prompts should omit
-  names or private details about real people.
-- If `prompt` is omitted, the backend resolves the ID through the existing mock
-  journal provider and builds the prompt from that provider's **title only**.
-  Journal body text is deliberately never sent to ComfyUI. Client-supplied
-  title/content fields are ignored. This minimization must be revisited when
-  Module 1 provides real, user-owned journal context.
+- At least one of `prompt`, `journal_entry_id`, or `summary_id` is required. The
+  default maximum is 1000 characters and is configurable with
+  `MEDIA_GENERATION_MAX_PROMPT_LENGTH`; the server always re-validates the
+  resolved prompt. The UI shows scene-focused examples and guidance that the
+  local model cannot faithfully recreate a real person's likeness and that
+  prompts should omit names or private details about real people.
+- **Prompt precedence is deterministic:** an explicit `prompt` wins; otherwise
+  the selected summary's stored `illustration_prompt` is used; otherwise the
+  journal entry's title and existing recap (`summary_text`) build the prompt.
+  If none of those yields text, the request is rejected before ComfyUI runs.
+- `journal_entry_id` and `summary_id` are resolved through owner-scoped ORM
+  queries. A missing or foreign ID returns a generic `400` that does not reveal
+  whether the record exists. If both are supplied, the summary must belong to
+  that journal entry; a mismatched pairing is rejected. A summary linked to a
+  foreign journal entry is rejected as unavailable.
+- The journal entry's **body text is never sent to ComfyUI**; only the title and
+  recap are eligible. Client-supplied title/text/content fields are ignored.
+  Summary generation is not repeated: the stored `illustration_prompt` is used
+  verbatim.
+- A successful response stores the resolved prompt, `media_type=ai_generated`,
+  `status=succeeded`, `provider=comfyui`, the configured checkpoint as `model`,
+  the `summary` FK when a summary was used, and the journal link through
+  `JournalEntry.photos`. No row or stored file is left behind when generation
+  or storage fails.
 - Default allowed sizes are `512x512`, `512x768`, and `768x512`; the first is
   used when no size is supplied. `steps` defaults to 20 within the default
   1-30 range. Both are server-side guardrails configured with
@@ -519,8 +638,9 @@ ComfyUI; React never receives the ComfyUI endpoint or workflow.
 scoped to `request.user`; another user's media ID returns `404`.
 
 `PATCH`/`PUT` accept JSON and update only `prompt` (max 1000 chars, may be
-empty on `PUT`; `PUT` requires the field). `owner`, `file`, `media_type`,
-`status`, and `journal_entry_id` are read-only and are ignored if supplied.
+empty on `PUT`; `PUT` requires the field). Ownership, file, type, status, and
+provenance fields (`journal_entry_id`, `journal_entries`, `summary_id`,
+`provider`, `model`) are read-only and are ignored if supplied.
 
 ```json
 // PATCH request
@@ -532,14 +652,7 @@ removed after that transaction commits, and only when no other media row
 references the same stored name. A storage-cleanup failure does not resurrect
 the row: the request still returns `204` and a warning is logged.
 
-#### Mock journal fixture — `GET /api/media/mock-journal-entries/`
-
-Read-only list of the isolated in-memory fixture (`id`, `title`, `content`,
-`created_at`). It issues no database queries and never creates journal or
-media rows. It exists only to preview the Module 3 integration; the media
-`journal_entry_id` remains a plain nullable integer, not a foreign key.
-
-### 3.6 People (faces)
+### 3.6 People (faces) **[PROPOSED]**
 
 | Method | Path | Auth | Ownership |
 | --- | --- | --- | --- |
@@ -567,7 +680,7 @@ Fields (proposal): `id`, `name`, `notes`, `created_at`.
 
 ## 4. Unresolved team decisions
 
-1. **Journal path:** `/api/journal/entries/` (recommended) vs the proposed `/api/entries/`.
+1. **Journal path:** resolved — `/api/journal/entries/` is implemented.
 2. **`Profile` model:** create one (with which fields) or extend `/api/accounts/me/`
    to edit built-in `User` fields only? *Blocking for §3.1.*
 3. **`PATCH /api/accounts/me/`:** approve self-service profile updates?
@@ -602,4 +715,6 @@ Fields (proposal): `id`, `name`, `notes`, `created_at`.
 | 2026-10-15 | Initial draft: conventions + implemented Accounts endpoints + proposed module endpoints | — |
 | 2026-10-15 | §1.2: mark the React `PATCH /me/` example as proposed (today `/me/` is `GET` only) | — |
 | 2026-10-24 | §3.5: implement owner-scoped media upload/list and local ComfyUI generation; add `status`; document sync behavior and safe errors | Module 4 |
-| 2026-10-24 | §3.5: implement detail/update/delete with post-commit file cleanup, `prompt`-only updates, and the read-only mock journal endpoint | Module 4 |
+| 2026-10-24 | §3.5: implement detail/update/delete with post-commit file cleanup and `prompt`-only updates | Module 4 |
+| 2026-10-25 | §3.4–3.5: remove the mock journal fixture; integrate real Module 1 entries and Module 3 summaries, prompt precedence, provenance fields, and owner-scoped validation | Module 4 |
+| 2026-10-25 | Merge reconciliation: restore one implemented-endpoints table, document the real Journal fields and search, mark implemented module sections, and correct pagination/CSRF notes | Merge resolution |

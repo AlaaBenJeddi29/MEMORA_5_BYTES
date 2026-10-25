@@ -1,7 +1,6 @@
 import type {
   GenerateImageInput,
   MediaItem,
-  MockJournalEntry,
   UpdateMediaInput,
 } from '../types/media'
 import { apiRequest } from './apiClient'
@@ -16,13 +15,10 @@ export const mediaApi = {
 
   get: (id: number) => apiRequest<MediaItem>(`/api/media/${id}/`),
 
-  /** multipart upload; only the file and an optional mock journal ID are sent. */
-  upload: (file: File, journalEntryId?: number | null) => {
+  /** multipart upload; the server owns provenance and media type. */
+  upload: (file: File) => {
     const body = new FormData()
     body.append('file', file)
-    if (journalEntryId != null) {
-      body.append('journal_entry_id', String(journalEntryId))
-    }
     return apiRequest<MediaItem>('/api/media/', { method: 'POST', body })
   },
 
@@ -35,9 +31,6 @@ export const mediaApi = {
   /** The Django backend is the only caller of local ComfyUI. */
   generate: (input: GenerateImageInput) =>
     apiRequest<MediaItem>('/api/media/generate/', { method: 'POST', body: input }),
-
-  listMockJournalEntries: () =>
-    apiRequest<MockJournalEntry[]>('/api/media/mock-journal-entries/'),
 }
 
 /**

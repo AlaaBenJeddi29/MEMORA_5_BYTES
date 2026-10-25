@@ -14,9 +14,18 @@ and uses `services/media.ts` on top of the shared `apiClient`.
 - A ref-based in-flight guard plus disabled controls prevent duplicate clicks.
   The API itself has no idempotency ledger, so repeated successful requests
   are recorded as separate images.
-- Only the typed prompt or the selected sample-memory ID leaves the browser.
-  The server resolves sample memories and sends only the title to ComfyUI,
-  never the body text.
+- Only the typed prompt and the selected real IDs leave the browser. Journal
+  choices come from Module 1's owner-scoped `GET /api/journal/entries/`, and
+  summary choices come from Module 3's `GET /api/summaries/`. The server
+  re-resolves every ID against the signed-in owner before ComfyUI runs.
+- Prompt precedence is manual prompt → the selected summary's stored
+  `illustration_prompt` → the journal entry's title and recap. The journal body
+  text is never sent to ComfyUI, and a summary is not regenerated for an image.
+- `?summary_id=` and `?journal_entry_id=` are selection hints only. The form
+  pre-fills them, but the server remains authoritative on ownership and on
+  whether the summary belongs to the chosen entry.
+- The Module 3 summary detail dialog links here with both IDs so a saved
+  illustration prompt can be rendered without another Gemini call.
 - Prompt guidance and scene-only examples state that the model cannot
   faithfully recreate a real person's likeness and that names or private
   details should not be included.

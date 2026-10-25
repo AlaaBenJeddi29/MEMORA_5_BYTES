@@ -1,92 +1,49 @@
-"""Temporary read-only journal context for Module 4 demos.
+"""Resolve real Module 1 journal entries for Module 4 generation.
 
-Module 1 owns JournalEntry. Until that model and API are ready, this module
-provides a small, in-memory sample source for associating media with a memory
-and prefilling an illustration prompt. It never reads or writes the database.
-
-Only ``title`` is forwarded to the image provider when a sample memory is
-selected; ``content`` stays server-side. Replace ``MockJournalContextProvider``
-with a real implementation of ``JournalContextProvider`` when Module 1 is
-available, and revisit that minimization with explicit user consent.
+The database is the only source of journal context. Resolution always filters
+by the authenticated owner, so a client-supplied ID can never select another
+user's entry.
 """
 
-from collections.abc import Sequence
-from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Protocol
+from django.conf import settings
+
+from apps.journal.models import JournalEntry
 
 
-class JournalContextNotFound(LookupError):
-    """Raised when a requested journal context id does not exist."""
+class JournalEntryNotFound(LookupError):
+    """The entry does not exist, or the caller may not see it."""
 
 
-@dataclass(frozen=True, slots=True)
-class JournalContext:
-    id: int
-    title: str
-    content: str
-    created_at: datetime
+def get_journal_entry(user, entry_id: int) -> JournalEntry:
+    try:
+        return JournalEntry.objects.only(
+            "id",
+            "title",
+            "summary_text",
+        ).get(pk=entry_id, user=user)
+    except (
+        JournalEntry.DoesNotExist,
+        TypeError,
+        ValueError,
+        OverflowError,
+    ) as exc:
+        raise JournalEntryNotFound("Journal entry not found.") from exc
 
 
-class JournalContextProvider(Protocol):
-    def list_contexts(self) -> Sequence[JournalContext]:
-        ...
+def build_journal_prompt(entry: JournalEntry) -> str:
+    """Build a concise prompt without sending the private journal body.
 
-    def get_context(self, entry_id: int) -> JournalContext:
-        ...
+    Only the title and the entry's existing recap are eligible. ``text`` is
+    never forwarded to ComfyUI.
+    """
+    title = " ".join((entry.title or "").split())
+    recap = " ".join((entry.summary_text or "").split())
 
+    parts = []
+    if title:
+        parts.append(f'Illustrate this journal memory titled "{title}".')
+    if recap:
+        parts.append(recap)
 
-MOCK_JOURNAL_CONTEXTS: tuple[JournalContext, ...] = (
-    JournalContext(
-        id=1,
-        title="Morning by the lake",
-        content=(
-            "Woke before sunrise and walked down to the lake. The water was "
-            "still, and the only sound was a pair of ducks landing near the reeds."
-        ),
-        created_at=datetime(2026, 9, 12, 7, 15, tzinfo=timezone.utc),
-    ),
-    JournalContext(
-        id=2,
-        title="Rainy afternoon",
-        content=(
-            "Spent the afternoon reading by the window while rain traced lines "
-            "down the glass. The apartment smelled of coffee and old paper."
-        ),
-        created_at=datetime(2026, 9, 15, 15, 40, tzinfo=timezone.utc),
-    ),
-    JournalContext(
-        id=3,
-        title="Evening in the garden",
-        content=(
-            "The tomatoes finally turned red. I picked a handful, watered the "
-            "herbs, and watched the light fade behind the neighbour's roof."
-        ),
-        created_at=datetime(2026, 9, 18, 19, 55, tzinfo=timezone.utc),
-    ),
-)
-
-
-class MockJournalContextProvider:
-    """In-memory sample provider used only until Module 1 exposes JournalEntry."""
-
-    def __init__(
-        self,
-        contexts: Sequence[JournalContext] = MOCK_JOURNAL_CONTEXTS,
-    ) -> None:
-        self._contexts = tuple(contexts)
-        self._by_id = {context.id: context for context in self._contexts}
-
-    def list_contexts(self) -> Sequence[JournalContext]:
-        return self._contexts
-
-    def get_context(self, entry_id: int) -> JournalContext:
-        try:
-            return self._by_id[entry_id]
-        except KeyError as exc:
-            raise JournalContextNotFound(
-                f"Journal context {entry_id} was not found."
-            ) from exc
-
-
-default_provider: JournalContextProvider = MockJournalContextProvider()
+    prompt = " ".join(parts)
+    return prompt[: settings.MEDIA_GENERATION_MAX_PROMPT_LENGTH].rstrip()

@@ -8,6 +8,7 @@ generated file has been stored as an AI-generated media row.
 
 import logging
 
+from django.conf import settings
 from django.core.files.base import ContentFile
 from django.db import transaction
 from rest_framework import generics, status
@@ -24,13 +25,11 @@ from .comfyui import (
     ComfyUIUnavailableError,
     build_client,
 )
-from .journal_context import default_provider
 from .models import MediaFile
 from .serializers import (
     GenerateImageSerializer,
     MediaFileDetailSerializer,
     MediaFileSerializer,
-    MockJournalEntrySerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -55,7 +54,11 @@ class MediaFileListCreateView(generics.ListCreateAPIView):
     parser_classes = [MultiPartParser, FormParser]
 
     def get_queryset(self):
-        return MediaFile.objects.filter(owner=self.request.user)
+        return (
+            MediaFile.objects.filter(owner=self.request.user)
+            .select_related("summary")
+            .prefetch_related("journal_entries")
+        )
 
     def perform_create(self, serializer):
         serializer.save(
@@ -73,7 +76,11 @@ class MediaFileDetailView(generics.RetrieveUpdateDestroyAPIView):
     parser_classes = [JSONParser]
 
     def get_queryset(self):
-        return MediaFile.objects.filter(owner=self.request.user)
+        return (
+            MediaFile.objects.filter(owner=self.request.user)
+            .select_related("summary")
+            .prefetch_related("journal_entries")
+        )
 
     def perform_destroy(self, instance):
         field_file = instance.file
@@ -93,19 +100,6 @@ class MediaFileDetailView(generics.RetrieveUpdateDestroyAPIView):
                 )
 
 
-class MockJournalEntryListView(APIView):
-    """Read-only journal choices from the isolated in-memory fixture."""
-
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        serializer = MockJournalEntrySerializer(
-            default_provider.list_contexts(),
-            many=True,
-        )
-        return Response(serializer.data)
-
-
 class GenerateImageView(APIView):
     """Generate an image with local ComfyUI and store the validated result."""
 
@@ -113,7 +107,10 @@ class GenerateImageView(APIView):
     parser_classes = [JSONParser]
 
     def post(self, request):
-        serializer = GenerateImageSerializer(data=request.data)
+        serializer = GenerateImageSerializer(
+            data=request.data,
+            context={"request": request},
+        )
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
@@ -121,13 +118,14 @@ class GenerateImageView(APIView):
         # response bodies are never written to application logs.
         logger.info(
             "Image generation requested: user_id=%s size=%sx%s steps=%s "
-            "prompt_chars=%s journal_entry_id=%s",
+            "prompt_chars=%s journal_entry_id=%s summary_id=%s",
             request.user.pk,
             data["width"],
             data["height"],
             data["steps"],
             len(data["resolved_prompt"]),
             data.get("journal_entry_id"),
+            data.get("summary_id"),
         )
 
         try:
@@ -159,17 +157,23 @@ class GenerateImageView(APIView):
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
+        checkpoint = (settings.COMFYUI_CHECKPOINT or "").strip()
         media = MediaFile(
             owner=request.user,
             media_type=MediaFile.MediaType.AI_GENERATED,
             prompt=data["resolved_prompt"],
-            journal_entry_id=data.get("journal_entry_id"),
+            summary=data.get("summary"),
+            provider="comfyui",
+            model=(checkpoint[:255] or "stable-diffusion-1.5"),
             status=MediaFile.Status.SUCCEEDED,
         )
+        journal_entry = data.get("journal_entry")
         try:
             media.file.save("generated.png", ContentFile(generated.data), save=False)
             with transaction.atomic():
                 media.save()
+                if journal_entry is not None:
+                    journal_entry.photos.add(media)
         except Exception:
             field_file = media.file
             if (

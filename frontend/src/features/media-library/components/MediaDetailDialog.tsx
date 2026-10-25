@@ -108,11 +108,39 @@ export function MediaDetailDialog({
 
           <dl className="media-facts">
             <div className="media-facts__row">
-              <dt>Sample memory</dt>
+              <dt>Journal entry</dt>
               <dd>
-                {media.journal_entry_id ? `#${media.journal_entry_id}` : 'Not linked'}
+                {media.journal_entries.length > 0 ? (
+                  media.journal_entries.map((entry, index) => (
+                    <span key={entry.id}>
+                      {index > 0 ? ', ' : ''}
+                      <a href="/app/journal">
+                        {entry.title || `Entry #${entry.id}`}
+                      </a>
+                    </span>
+                  ))
+                ) : (
+                  'Not linked'
+                )}
               </dd>
             </div>
+            <div className="media-facts__row">
+              <dt>Summary</dt>
+              <dd>
+                {media.summary_id !== null ? (
+                  <a href="/app/summaries">Summary #{media.summary_id}</a>
+                ) : (
+                  'Not linked'
+                )}
+              </dd>
+            </div>
+            {media.media_type === 'ai_generated' &&
+              (media.provider || media.model) && (
+                <div className="media-facts__row">
+                  <dt>Generated with</dt>
+                  <dd>{[media.provider, media.model].filter(Boolean).join(' · ')}</dd>
+                </div>
+              )}
             <div className="media-facts__row">
               <dt>Created</dt>
               <dd>{formatDateTime(media.created_at)}</dd>

@@ -172,18 +172,22 @@ with credentials from the browser.
 | `PUT` | `/api/media/{id}/` | required | Replace the `prompt` metadata (field required). |
 | `DELETE` | `/api/media/{id}/` | required | Delete an owned item and its unshared stored file. |
 | `POST` | `/api/media/generate/` | required | Generate with local ComfyUI and store an AI-generated image. |
-| `GET` | `/api/media/mock-journal-entries/` | required | Read the isolated mock journal fixture; never writes rows. |
 
 Uploads are validated from decoded image content and stored unchanged.
-`owner`, `file`, `media_type`, `status`, and `journal_entry_id` are set by the
-server; detail updates only accept `prompt`. Deletion removes the database row
-first and the stored file after commit, unless another row still references it.
+`owner`, `file`, `media_type`, `status`, and provenance (`journal_entries`,
+`summary_id`, `provider`, `model`) are set by the server; detail updates only
+accept `prompt`. Deletion removes the database row first and the stored file
+after commit, unless another row still references it.
 API access is owner-scoped, but the stored file URL is an unguessable capability
 URL: while `DEBUG=True`, Django serves `/media/` without authentication, so the
 URL is not an access-control boundary. Production delivery is unresolved; see
 [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md) §3.5 and §4.11.
-Generation accepts a JSON prompt (or a mock `journal_entry_id`) and returns
-`201` only after the validated image is stored. It uses **local ComfyUI**, so
+Generation accepts a manual prompt, a real Module 1 `journal_entry_id`, or a
+real Module 3 `summary_id`; every ID is resolved against the signed-in owner
+before ComfyUI runs. Precedence is manual prompt → the summary's stored
+`illustration_prompt` → the journal entry's title and recap. Journal body text
+is never sent to ComfyUI. The endpoint returns `201` only after the validated
+image is stored, and failures leave no partial row or file. It uses **local ComfyUI**, so
 ComfyUI and a Stable Diffusion checkpoint must be installed and running first:
 see [`docs/COMFYUI.md`](docs/COMFYUI.md) for configuration, licensing, hardware
 limits, and the real-generation smoke test. No model or ComfyUI installation is

@@ -6,7 +6,9 @@ import { FormField } from '../../../components/FormField'
 import { LoadingState } from '../../../components/LoadingState'
 import { normalizeApiError, type NormalizedErrors } from '../../../services/errors'
 import { isRetryableGenerationError, mediaApi } from '../../../services/media'
-import type { GenerateImageInput, MediaItem, MockJournalEntry } from '../../../types/media'
+import type { GenerateImageInput, MediaItem } from '../../../types/media'
+import type { JournalEntry } from '../../../types/journal'
+import type { Summary } from '../../../types/summaries'
 import { formatDateTime } from '../../../utils/format'
 import {
   EMPTY_ERRORS,
@@ -17,21 +19,36 @@ import {
   PROMPT_EXAMPLES,
   PROMPT_GUIDANCE,
 } from '../mediaHelpers'
+import { JournalEntrySelect } from './JournalEntrySelect'
 import { MediaImage } from './MediaImage'
-import { MockMemorySelect } from './MockMemorySelect'
+import { SummarySelect } from './SummarySelect'
 
 export interface GenerateImageFormProps {
-  memories: MockJournalEntry[]
-  memoriesLoading: boolean
-  memoriesError: string | null
+  journalEntries: JournalEntry[]
+  journalEntriesLoading: boolean
+  journalEntriesError: string | null
+  onReloadJournalEntries: () => void
+  summaries: Summary[]
+  summariesLoading: boolean
+  summariesError: string | null
+  onReloadSummaries: () => void
+  initialJournalEntryId?: number | null
+  initialSummaryId?: number | null
   onGenerated: (media: MediaItem) => void
   onView: (media: MediaItem) => void
 }
 
 export function GenerateImageForm({
-  memories,
-  memoriesLoading,
-  memoriesError,
+  journalEntries,
+  journalEntriesLoading,
+  journalEntriesError,
+  onReloadJournalEntries,
+  summaries,
+  summariesLoading,
+  summariesError,
+  onReloadSummaries,
+  initialJournalEntryId = null,
+  initialSummaryId = null,
   onGenerated,
   onView,
 }: GenerateImageFormProps) {
@@ -39,7 +56,12 @@ export function GenerateImageForm({
   const consentId = useId()
   const inFlight = useRef(false)
   const [prompt, setPrompt] = useState('')
-  const [memoryId, setMemoryId] = useState('')
+  const [journalEntryId, setJournalEntryId] = useState(
+    initialJournalEntryId === null ? '' : String(initialJournalEntryId),
+  )
+  const [summaryId, setSummaryId] = useState(
+    initialSummaryId === null ? '' : String(initialSummaryId),
+  )
   const [size, setSize] = useState<string>(GENERATION_SIZES[0].value)
   const [consented, setConsented] = useState(false)
   const [errors, setErrors] = useState<NormalizedErrors>(EMPTY_ERRORS)
@@ -49,18 +71,28 @@ export function GenerateImageForm({
 
   const selectedSize =
     GENERATION_SIZES.find((option) => option.value === size) ?? GENERATION_SIZES[0]
+  const selectedSummary = summaries.find(
+    (summary) => String(summary.id) === summaryId,
+  )
 
   const formMessages = [
     ...flattenFormErrors(errors),
     ...Object.entries(errors.fieldErrors)
-      .filter(([field]) => field !== 'prompt' && field !== 'journal_entry_id')
+      .filter(
+        ([field]) =>
+          field !== 'prompt' &&
+          field !== 'journal_entry_id' &&
+          field !== 'summary_id',
+      )
       .flatMap(([, messages]) => messages),
   ]
 
-  function validatePrompt(): NormalizedErrors {
+  function validateSource(): NormalizedErrors {
     const fieldErrors: Record<string, string[]> = {}
-    if (!prompt.trim() && !memoryId) {
-      fieldErrors.prompt = ['Enter a prompt or select a sample memory.']
+    if (!prompt.trim() && !journalEntryId && !summaryId) {
+      fieldErrors.prompt = [
+        'Enter a prompt or select one of your journal entries or summaries.',
+      ]
     }
     if (prompt.length > MAX_PROMPT_LENGTH) {
       fieldErrors.prompt = [
@@ -68,7 +100,67 @@ export function GenerateImageForm({
         `Keep the prompt to ${MAX_PROMPT_LENGTH} characters or fewer.`,
       ]
     }
+
+    if (
+      journalEntryId &&
+      !journalEntriesLoading &&
+      !journalEntriesError &&
+      !journalEntries.some((entry) => String(entry.id) === journalEntryId)
+    ) {
+      fieldErrors.journal_entry_id = [
+        'That journal entry is not in your account. Choose one of your entries or clear the selection.',
+      ]
+    }
+
+    if (summaryId && !summariesLoading && !summariesError) {
+      if (!selectedSummary) {
+        fieldErrors.summary_id = [
+          'That summary is not in your account. Choose one of your summaries or clear the selection.',
+        ]
+      } else {
+        if (
+          journalEntryId &&
+          selectedSummary.journal_entry_id !== Number(journalEntryId)
+        ) {
+          fieldErrors.summary_id = [
+            'The selected journal entry does not belong to this summary. Choose the summary to keep them paired.',
+          ]
+        }
+        if (!prompt.trim() && !selectedSummary.illustration_prompt.trim()) {
+          fieldErrors.summary_id = [
+            ...(fieldErrors.summary_id ?? []),
+            'This summary has no illustration prompt. Add one in Summaries or enter a manual prompt.',
+          ]
+        }
+      }
+    }
+
     return { fieldErrors, formErrors: [] }
+  }
+
+  function handleJournalChange(value: string) {
+    setJournalEntryId(value)
+    if (summaryId && value) {
+      const summary = summaries.find((item) => String(item.id) === summaryId)
+      if (!summary || summary.journal_entry_id !== Number(value)) {
+        setSummaryId('')
+      }
+    }
+  }
+
+  function handleSummaryChange(value: string) {
+    setSummaryId(value)
+    if (!value) {
+      return
+    }
+    const summary = summaries.find((item) => String(item.id) === value)
+    if (summary) {
+      setJournalEntryId(
+        summary.journal_entry_id === null
+          ? ''
+          : String(summary.journal_entry_id),
+      )
+    }
   }
 
   async function runGeneration() {
@@ -76,7 +168,7 @@ export function GenerateImageForm({
       return
     }
 
-    const validation = validatePrompt()
+    const validation = validateSource()
     if (Object.keys(validation.fieldErrors).length > 0) {
       setErrors(validation)
       return
@@ -90,9 +182,11 @@ export function GenerateImageForm({
     if (trimmedPrompt) {
       input.prompt = trimmedPrompt
     }
-    if (memoryId) {
-      // Only the ID crosses the boundary; Django resolves the sample context.
-      input.journal_entry_id = Number(memoryId)
+    if (journalEntryId) {
+      input.journal_entry_id = Number(journalEntryId)
+    }
+    if (summaryId) {
+      input.summary_id = Number(summaryId)
     }
 
     // This ref is the duplicate-submission guard: state updates render later,
@@ -134,8 +228,8 @@ export function GenerateImageForm({
 
       <FormField
         label="Prompt"
-        hint={`${PROMPT_GUIDANCE} Django sends only this text to local ComfyUI; React never calls the provider.`}
-        required={!memoryId}
+        hint={`${PROMPT_GUIDANCE} A manual prompt replaces any selected summary or journal prompt. Leave it empty to use the summary’s saved illustration prompt, then the journal entry’s title and recap. The entry body is never sent.`}
+        required={!journalEntryId && !summaryId}
         error={errors.fieldErrors.prompt?.[0]}
       >
         {(field) => (
@@ -179,12 +273,24 @@ export function GenerateImageForm({
         )}
       </FormField>
 
-      <MockMemorySelect
-        entries={memories}
-        loading={memoriesLoading}
-        error={memoriesError}
-        value={memoryId}
-        onChange={setMemoryId}
+      <SummarySelect
+        summaries={summaries}
+        loading={summariesLoading}
+        error={summariesError}
+        value={summaryId}
+        onChange={handleSummaryChange}
+        onRetry={onReloadSummaries}
+        fieldError={errors.fieldErrors.summary_id?.[0]}
+        disabled={generating}
+      />
+
+      <JournalEntrySelect
+        entries={journalEntries}
+        loading={journalEntriesLoading}
+        error={journalEntriesError}
+        value={journalEntryId}
+        onChange={handleJournalChange}
+        onRetry={onReloadJournalEntries}
         fieldError={errors.fieldErrors.journal_entry_id?.[0]}
         disabled={generating}
       />
@@ -297,10 +403,35 @@ export function GenerateImageForm({
               and may not accurately depict real people or events.
             </p>
             <p className="media-result__prompt">
-              {result.prompt || 'Generated from the selected sample memory.'}
+              {result.prompt || 'No prompt was recorded for this image.'}
             </p>
+            {(result.summary_id !== null || result.journal_entries.length > 0) && (
+              <div className="media-result__provenance">
+                {result.summary_id !== null && (
+                  <p>
+                    From <a href="/app/summaries">summary #{result.summary_id}</a>.
+                  </p>
+                )}
+                {result.journal_entries.length > 0 && (
+                  <p>
+                    Linked to{' '}
+                    {result.journal_entries.map((entry, index) => (
+                      <span key={entry.id}>
+                        {index > 0 ? ', ' : ''}
+                        <a href="/app/journal">
+                          {entry.title || `journal entry #${entry.id}`}
+                        </a>
+                      </span>
+                    ))}
+                    .
+                  </p>
+                )}
+              </div>
+            )}
             <p className="media-result__meta">
-              {MEDIA_TYPE_LABELS[result.media_type]} · stored {formatDateTime(result.created_at)}
+              {MEDIA_TYPE_LABELS[result.media_type]}
+              {result.model ? ` · ${result.model}` : ''} · stored{' '}
+              {formatDateTime(result.created_at)}
             </p>
             <div className="media-form-actions">
               <Button size="sm" variant="secondary" onClick={() => onView(result)}>

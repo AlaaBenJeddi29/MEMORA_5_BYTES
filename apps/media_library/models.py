@@ -41,13 +41,20 @@ class MediaFile(models.Model):
         default=Status.SUCCEEDED,
     )
 
-    # Soft reference to Module 1's JournalEntry. Deliberately not a ForeignKey
-    # until that model and its API are owned and confirmed by Module 1.
-    journal_entry_id = models.PositiveBigIntegerField(
+    # Journal provenance uses JournalEntry.photos (related_name
+    # "journal_entries") rather than a second competing journal relation.
+    summary = models.ForeignKey(
+        "summaries.Summary",
         null=True,
         blank=True,
         db_index=True,
+        on_delete=models.SET_NULL,
+        related_name="media_files",
     )
+
+    # Local generation metadata. Original uploads leave both blank.
+    provider = models.CharField(max_length=32, blank=True, default="")
+    model = models.CharField(max_length=255, blank=True, default="")
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

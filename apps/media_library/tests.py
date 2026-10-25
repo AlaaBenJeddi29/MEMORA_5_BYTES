@@ -1,8 +1,7 @@
-"""Tests for the Module 4 media foundation.
+"""Tests for the Module 4 media gallery and local generation flow.
 
-Covers the MediaFile model and the temporary in-memory journal context
-provider. No JournalEntry model or database rows are created, and no
-ComfyUI or network calls are made.
+Generation tests use real ``JournalEntry`` and ``Summary`` rows and a stub
+ComfyUI client. No network or GPU is required.
 """
 
 import tempfile
@@ -32,12 +31,13 @@ from .comfyui import (
     ComfyUIUnavailableError,
     GeneratedImage,
 )
+from apps.journal.models import JournalEntry
+from apps.summaries.models import Summary
+
 from .journal_context import (
-    MOCK_JOURNAL_CONTEXTS,
-    JournalContext,
-    JournalContextNotFound,
-    MockJournalContextProvider,
-    default_provider,
+    JournalEntryNotFound,
+    build_journal_prompt,
+    get_journal_entry,
 )
 from .models import MediaFile
 
@@ -564,6 +564,25 @@ class GenerateImageApiTests(APITestCase):
         self.addCleanup(self._override.disable)
         self.owner = User.objects.create_user(username="owner", password="test-pass-123")
         self.other = User.objects.create_user(username="other", password="test-pass-123")
+        self.entry = JournalEntry.objects.create(
+            user=self.owner,
+            title="Morning walk",
+            text="A private body that must never reach ComfyUI.",
+            summary_text="A calm walk before breakfast.",
+        )
+        self.other_entry = JournalEntry.objects.create(
+            user=self.other,
+            title="Other user's private entry",
+            text="Do not expose this to the owner.",
+        )
+        self.summary = Summary.objects.create(
+            owner=self.owner,
+            journal_entry=self.entry,
+            summary_text="A calm walk before breakfast.",
+            mood="calm",
+            themes=["nature"],
+            illustration_prompt="A quiet park path at sunrise.",
+        )
         self.url = reverse("media-generate")
 
     def post_generate(self, payload=None, client=None):
@@ -603,7 +622,13 @@ class GenerateImageApiTests(APITestCase):
         self.assertEqual(media.media_type, MediaFile.MediaType.AI_GENERATED)
         self.assertEqual(media.status, MediaFile.Status.SUCCEEDED)
         self.assertEqual(media.prompt, "A quiet lake at dawn")
-        self.assertIsNone(media.journal_entry_id)
+        self.assertEqual(media.provider, "comfyui")
+        self.assertTrue(media.model)
+        self.assertIsNone(media.summary)
+        self.assertFalse(media.journal_entries.exists())
+        self.assertIsNone(response.data["journal_entry_id"])
+        self.assertIsNone(response.data["summary_id"])
+        self.assertEqual(response.data["provider"], "comfyui")
         self.assertEqual(response.data["status"], MediaFile.Status.SUCCEEDED)
         self.assertIn("/media/users/", response.data["file"])
         self.assertNotIn(str(self._media_root.name), response.data["file"])
@@ -611,46 +636,150 @@ class GenerateImageApiTests(APITestCase):
             self.assertEqual(stored.read(), client.result.data)
         self.assertEqual(client.calls[0]["seed"], 7)
 
-    def test_journal_prompt_uses_only_the_server_owned_title(self):
+    def test_journal_prompt_uses_title_and_recap_but_not_the_body(self):
         self.authenticate()
         client = StubComfyUIClient()
-        context = MOCK_JOURNAL_CONTEXTS[0]
 
         response, _ = self.post_generate(
             {
-                "journal_entry_id": 1,
+                "journal_entry_id": self.entry.pk,
                 "title": "CLIENT TITLE MUST BE IGNORED",
-                "content": "CLIENT CONTENT MUST BE IGNORED",
+                "text": "CLIENT TEXT MUST BE IGNORED",
             },
             client=client,
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         prompt = client.calls[0]["prompt"]
-        self.assertIn(context.title, prompt)
-        self.assertNotIn(context.content, prompt)
+        self.assertIn(self.entry.title, prompt)
+        self.assertIn(self.entry.summary_text, prompt)
+        self.assertNotIn(self.entry.text, prompt)
         self.assertNotIn("CLIENT TITLE", prompt)
-        self.assertNotIn("CLIENT CONTENT", prompt)
+        self.assertNotIn("CLIENT TEXT", prompt)
         media = MediaFile.objects.get(pk=response.data["id"])
-        self.assertEqual(media.journal_entry_id, 1)
+        self.assertEqual(list(media.journal_entries.all()), [self.entry])
+        self.assertEqual(response.data["journal_entry_id"], self.entry.pk)
+        self.assertEqual(
+            response.data["journal_entries"],
+            [{"id": self.entry.pk, "title": self.entry.title}],
+        )
 
-    def test_explicit_prompt_is_used_with_a_journal_reference(self):
+    def test_explicit_prompt_wins_and_is_stored_with_the_journal_link(self):
         self.authenticate()
         client = StubComfyUIClient()
 
         response, _ = self.post_generate(
-            {"prompt": "A custom approved prompt", "journal_entry_id": 2},
+            {
+                "prompt": "A custom approved prompt",
+                "journal_entry_id": self.entry.pk,
+            },
             client=client,
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(client.calls[0]["prompt"], "A custom approved prompt")
-        self.assertEqual(
-            MediaFile.objects.get(pk=response.data["id"]).journal_entry_id,
-            2,
+        media = MediaFile.objects.get(pk=response.data["id"])
+        self.assertEqual(media.prompt, "A custom approved prompt")
+        self.assertEqual(list(media.journal_entries.all()), [self.entry])
+
+    def test_summary_uses_its_stored_illustration_prompt(self):
+        self.authenticate()
+        client = StubComfyUIClient()
+
+        response, _ = self.post_generate(
+            {"summary_id": self.summary.pk},
+            client=client,
         )
 
-    def test_prompt_or_journal_reference_is_required(self):
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(
+            client.calls[0]["prompt"],
+            self.summary.illustration_prompt,
+        )
+        media = MediaFile.objects.get(pk=response.data["id"])
+        self.assertEqual(media.summary, self.summary)
+        self.assertEqual(list(media.journal_entries.all()), [self.entry])
+        self.assertEqual(response.data["summary_id"], self.summary.pk)
+        self.assertEqual(response.data["journal_entry_id"], self.entry.pk)
+
+    def test_manual_prompt_wins_over_the_summary_prompt(self):
+        self.authenticate()
+        client = StubComfyUIClient()
+
+        response, _ = self.post_generate(
+            {"prompt": "Manual prompt", "summary_id": self.summary.pk},
+            client=client,
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(client.calls[0]["prompt"], "Manual prompt")
+        media = MediaFile.objects.get(pk=response.data["id"])
+        self.assertEqual(media.summary, self.summary)
+        self.assertEqual(media.prompt, "Manual prompt")
+
+    def test_summary_without_an_illustration_prompt_is_rejected(self):
+        self.authenticate()
+        summary = Summary.objects.create(
+            owner=self.owner,
+            journal_entry=self.entry,
+            summary_text="No illustration prompt yet.",
+            illustration_prompt="",
+        )
+
+        response, client = self.post_generate({"summary_id": summary.pk})
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("summary_id", response.data)
+        self.assertEqual(client.calls, [])
+        self.assertEqual(MediaFile.objects.count(), 0)
+
+    def test_summary_must_match_the_supplied_journal_entry(self):
+        self.authenticate()
+        other_owner_entry = JournalEntry.objects.create(
+            user=self.owner,
+            title="A different memory",
+            text="A different private body.",
+        )
+
+        response, client = self.post_generate(
+            {
+                "summary_id": self.summary.pk,
+                "journal_entry_id": other_owner_entry.pk,
+            }
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("summary_id", response.data)
+        self.assertEqual(client.calls, [])
+        self.assertEqual(MediaFile.objects.count(), 0)
+
+    def test_foreign_journal_and_summary_ids_do_not_leak_records(self):
+        self.authenticate()
+        foreign_summary = Summary.objects.create(
+            owner=self.other,
+            journal_entry=self.other_entry,
+            summary_text="Private summary.",
+            illustration_prompt="Private illustration prompt.",
+        )
+
+        entry_response, entry_client = self.post_generate(
+            {"journal_entry_id": self.other_entry.pk}
+        )
+        summary_response, summary_client = self.post_generate(
+            {"summary_id": foreign_summary.pk}
+        )
+
+        self.assertEqual(entry_response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(entry_response.data["journal_entry_id"], ["Journal entry not found."])
+        self.assertNotIn(self.other_entry.title, str(entry_response.data))
+        self.assertEqual(summary_response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(summary_response.data["summary_id"], ["Summary not found."])
+        self.assertNotIn(foreign_summary.summary_text, str(summary_response.data))
+        self.assertEqual(entry_client.calls, [])
+        self.assertEqual(summary_client.calls, [])
+        self.assertEqual(MediaFile.objects.count(), 0)
+
+    def test_prompt_or_context_is_required(self):
         self.authenticate()
 
         response, client = self.post_generate({})
@@ -936,19 +1065,39 @@ class MediaFileModelTests(TestCase):
         self.assertEqual(media.media_type, MediaFile.MediaType.ORIGINAL)
         self.assertEqual(media.status, MediaFile.Status.SUCCEEDED)
         self.assertEqual(media.prompt, "")
-        self.assertIsNone(media.journal_entry_id)
+        self.assertEqual(media.provider, "")
+        self.assertEqual(media.model, "")
+        self.assertIsNone(media.summary)
+        self.assertFalse(media.journal_entries.exists())
 
-    def test_ai_generated_media_stores_prompt_and_journal_reference(self):
+    def test_ai_generated_media_stores_prompt_and_real_provenance(self):
+        entry = JournalEntry.objects.create(
+            user=self.user,
+            title="Morning walk",
+            text="Private body.",
+        )
+        summary = Summary.objects.create(
+            owner=self.user,
+            journal_entry=entry,
+            summary_text="A calm walk.",
+            illustration_prompt="A quiet park at sunrise.",
+        )
         media = self.create_media(
             media_type=MediaFile.MediaType.AI_GENERATED,
             prompt="A quiet lake at sunrise, watercolor.",
-            journal_entry_id=2,
+            summary=summary,
+            provider="comfyui",
+            model="test-model.safetensors",
             status=MediaFile.Status.SUCCEEDED,
         )
+        entry.photos.add(media)
 
         self.assertEqual(media.media_type, "ai_generated")
         self.assertEqual(media.prompt, "A quiet lake at sunrise, watercolor.")
-        self.assertEqual(media.journal_entry_id, 2)
+        self.assertEqual(media.summary, summary)
+        self.assertEqual(media.provider, "comfyui")
+        self.assertEqual(media.model, "test-model.safetensors")
+        self.assertEqual(list(media.journal_entries.all()), [entry])
         self.assertEqual(media.status, "succeeded")
 
     def test_exposes_all_ai_processing_states(self):
@@ -957,12 +1106,67 @@ class MediaFileModelTests(TestCase):
             ["pending", "processing", "succeeded", "failed"],
         )
 
-    def test_journal_entry_id_is_a_plain_nullable_integer_not_a_relation(self):
-        field = MediaFile._meta.get_field("journal_entry_id")
+    def test_journal_provenance_uses_the_existing_photos_many_to_many(self):
+        field = JournalEntry._meta.get_field("photos")
 
-        self.assertIsInstance(field, models.PositiveBigIntegerField)
-        self.assertFalse(field.is_relation)
+        self.assertIsInstance(field, models.ManyToManyField)
+        self.assertEqual(field.related_model, MediaFile)
+        self.assertEqual(field.remote_field.related_name, "journal_entries")
+        self.assertFalse(
+            any(
+                item.name == "journal_entry_id"
+                for item in MediaFile._meta.get_fields()
+            )
+        )
+
+    def test_removing_the_journal_link_keeps_the_media(self):
+        entry = JournalEntry.objects.create(
+            user=self.user,
+            title="Morning walk",
+            text="Private body.",
+        )
+        media = self.create_media()
+        entry.photos.add(media)
+
+        entry.photos.remove(media)
+
+        self.assertTrue(MediaFile.objects.filter(pk=media.pk).exists())
+        self.assertFalse(media.journal_entries.exists())
+
+    def test_summary_provenance_is_a_set_null_foreign_key(self):
+        field = MediaFile._meta.get_field("summary")
+
+        self.assertTrue(field.is_relation)
         self.assertTrue(field.null)
+        self.assertEqual(field.remote_field.on_delete, models.SET_NULL)
+
+    def test_deleting_a_summary_keeps_the_media(self):
+        summary = Summary.objects.create(
+            owner=self.user,
+            summary_text="A calm walk.",
+            illustration_prompt="A quiet park.",
+        )
+        media = self.create_media(summary=summary)
+
+        summary.delete()
+
+        media.refresh_from_db()
+        self.assertIsNone(media.summary)
+        self.assertTrue(MediaFile.objects.filter(pk=media.pk).exists())
+
+    def test_deleting_a_journal_entry_keeps_the_media(self):
+        entry = JournalEntry.objects.create(
+            user=self.user,
+            title="Morning walk",
+            text="Private body.",
+        )
+        media = self.create_media()
+        entry.photos.add(media)
+
+        entry.delete()
+
+        self.assertTrue(MediaFile.objects.filter(pk=media.pk).exists())
+        self.assertFalse(media.journal_entries.exists())
 
     def test_owner_is_the_configured_user_model(self):
         field = MediaFile._meta.get_field("owner")
@@ -993,57 +1197,81 @@ class MediaFileModelTests(TestCase):
         self.assertNotEqual(first.file.name, second.file.name)
 
 
-class MockJournalContextProviderTests(TestCase):
+class JournalContextTests(TestCase):
     def setUp(self):
-        self.provider = MockJournalContextProvider()
+        self.owner = User.objects.create_user(username="owner", password="test-pass-123")
+        self.other = User.objects.create_user(username="other", password="test-pass-123")
+        self.entry = JournalEntry.objects.create(
+            user=self.owner,
+            title="Morning walk",
+            text="A private body that must never reach ComfyUI.",
+            summary_text="A calm walk before breakfast.",
+        )
+        self.other_entry = JournalEntry.objects.create(
+            user=self.other,
+            title="Other entry",
+            text="Other private body.",
+        )
 
-    def test_exposes_stable_sample_contexts(self):
-        contexts = self.provider.list_contexts()
-
-        self.assertEqual([context.id for context in contexts], [1, 2, 3])
+    def test_get_journal_entry_returns_the_owners_entry(self):
         self.assertEqual(
-            [context.id for context in MOCK_JOURNAL_CONTEXTS],
-            [1, 2, 3],
+            get_journal_entry(self.owner, self.entry.pk),
+            self.entry,
         )
-        for context in contexts:
-            self.assertIsInstance(context, JournalContext)
-            self.assertTrue(context.title)
-            self.assertTrue(context.content)
-            self.assertIsNotNone(context.created_at.tzinfo)
 
-    def test_get_context_returns_the_matching_entry(self):
-        context = self.provider.get_context(2)
+    def test_get_journal_entry_hides_another_users_entry(self):
+        with self.assertRaises(JournalEntryNotFound):
+            get_journal_entry(self.owner, self.other_entry.pk)
 
-        self.assertEqual(context.id, 2)
-        self.assertEqual(context.title, "Rainy afternoon")
+    def test_get_journal_entry_hides_missing_entries(self):
+        with self.assertRaises(JournalEntryNotFound):
+            get_journal_entry(self.owner, 999999)
 
-    def test_unknown_id_raises_a_clear_not_found_error(self):
-        with self.assertRaises(JournalContextNotFound) as raised:
-            self.provider.get_context(999)
+    def test_build_journal_prompt_uses_title_and_recap_but_not_the_body(self):
+        prompt = build_journal_prompt(self.entry)
 
-        self.assertEqual(str(raised.exception), "Journal context 999 was not found.")
+        self.assertIn(self.entry.title, prompt)
+        self.assertIn(self.entry.summary_text, prompt)
+        self.assertNotIn(self.entry.text, prompt)
 
-    def test_provider_never_touches_the_database(self):
-        with self.assertNumQueries(0):
-            self.provider.list_contexts()
-            self.provider.get_context(1)
-
-    def test_provider_can_be_replaced_with_injected_contexts(self):
-        custom = (
-            JournalContext(
-                id=42,
-                title="Custom memory",
-                content="Only used in this test.",
-                created_at=MOCK_JOURNAL_CONTEXTS[0].created_at,
-            ),
+    def test_build_journal_prompt_normalizes_whitespace(self):
+        entry = JournalEntry.objects.create(
+            user=self.owner,
+            title="  Morning\n walk  ",
+            text="Private body.",
+            summary_text="  A calm\t walk.  ",
         )
-        provider = MockJournalContextProvider(custom)
 
-        self.assertEqual(provider.list_contexts(), custom)
-        self.assertEqual(provider.get_context(42), custom[0])
+        prompt = build_journal_prompt(entry)
 
-    def test_default_provider_is_the_in_memory_mock(self):
-        self.assertIsInstance(default_provider, MockJournalContextProvider)
+        self.assertIn("Morning walk", prompt)
+        self.assertIn("A calm walk.", prompt)
+        self.assertNotIn("\n", prompt)
+        self.assertNotIn("\t", prompt)
+
+    def test_build_journal_prompt_is_capped(self):
+        entry = JournalEntry.objects.create(
+            user=self.owner,
+            title="T" * 100,
+            text="Private body.",
+            summary_text="R" * 2000,
+        )
+
+        prompt = build_journal_prompt(entry)
+
+        self.assertLessEqual(
+            len(prompt),
+            settings.MEDIA_GENERATION_MAX_PROMPT_LENGTH,
+        )
+
+    def test_build_journal_prompt_is_empty_without_title_or_recap(self):
+        entry = JournalEntry.objects.create(
+            user=self.owner,
+            title="",
+            text="Private body only.",
+        )
+
+        self.assertEqual(build_journal_prompt(entry), "")
 
 
 class MediaUploadApiTests(APITestCase):
@@ -1080,8 +1308,11 @@ class MediaUploadApiTests(APITestCase):
         self.assertEqual(media.media_type, MediaFile.MediaType.ORIGINAL)
         self.assertEqual(media.status, MediaFile.Status.SUCCEEDED)
         self.assertEqual(media.prompt, "")
-        self.assertIsNone(media.journal_entry_id)
+        self.assertIsNone(media.summary)
+        self.assertFalse(media.journal_entries.exists())
         self.assertEqual(response.data["status"], MediaFile.Status.SUCCEEDED)
+        self.assertIsNone(response.data["journal_entry_id"])
+        self.assertIsNone(response.data["summary_id"])
         self.assertIn("/media/users/", response.data["file"])
         self.assertNotIn(str(self._media_root.name), response.data["file"])
         with media.file.open("rb") as stored:
@@ -1230,25 +1461,36 @@ class MediaUploadApiTests(APITestCase):
         self.assertEqual(media.owner, self.owner)
         self.assertEqual(media.media_type, MediaFile.MediaType.ORIGINAL)
 
-    def test_journal_entry_id_uses_the_mock_provider(self):
+    def test_upload_ignores_client_supplied_provenance(self):
+        entry = JournalEntry.objects.create(
+            user=self.owner,
+            title="Morning walk",
+            text="Private body.",
+        )
+        summary = Summary.objects.create(
+            owner=self.owner,
+            journal_entry=entry,
+            summary_text="A calm walk.",
+            illustration_prompt="A quiet park.",
+        )
         self.authenticate()
 
-        valid = self.client.post(
+        response = self.client.post(
             self.url,
-            {"file": image_upload(), "journal_entry_id": 1},
+            {
+                "file": image_upload(),
+                "journal_entry_id": entry.pk,
+                "summary_id": summary.pk,
+            },
             format="multipart",
         )
-        self.assertEqual(valid.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(valid.data["journal_entry_id"], 1)
 
-        invalid = self.client.post(
-            self.url,
-            {"file": image_upload(), "journal_entry_id": 999},
-            format="multipart",
-        )
-        self.assertEqual(invalid.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("journal_entry_id", invalid.data)
-        self.assertEqual(MediaFile.objects.count(), 1)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        media = MediaFile.objects.get(pk=response.data["id"])
+        self.assertIsNone(media.summary)
+        self.assertFalse(media.journal_entries.exists())
+        self.assertIsNone(response.data["journal_entry_id"])
+        self.assertIsNone(response.data["summary_id"])
 
     def test_database_failure_removes_the_stored_upload(self):
         self.authenticate()
@@ -1358,6 +1600,7 @@ class MediaFileDetailApiTests(APITestCase):
                 "media_type": MediaFile.MediaType.AI_GENERATED,
                 "status": MediaFile.Status.FAILED,
                 "journal_entry_id": 3,
+                "summary_id": 5,
             },
             format="json",
         )
@@ -1369,7 +1612,8 @@ class MediaFileDetailApiTests(APITestCase):
         self.assertEqual(media.file.name, original_file)
         self.assertEqual(media.media_type, MediaFile.MediaType.ORIGINAL)
         self.assertEqual(media.status, MediaFile.Status.SUCCEEDED)
-        self.assertIsNone(media.journal_entry_id)
+        self.assertIsNone(media.summary)
+        self.assertFalse(media.journal_entries.exists())
 
     def test_put_requires_a_prompt_and_accepts_an_empty_one(self):
         media = self.create_media()
@@ -1497,59 +1741,17 @@ class MediaFileDetailApiTests(APITestCase):
         self.assertIn("cleanup failed", "\n".join(logs.output))
 
 
-class MockJournalEntryApiTests(APITestCase):
-    def setUp(self):
-        self.owner = User.objects.create_user(username="owner", password="test-pass-123")
-        self.url = reverse("media-mock-journal-entries")
-
-    def authenticate(self):
-        self.client.force_authenticate(user=self.owner)
-
-    def test_lists_the_isolated_fixture_without_database_queries(self):
-        self.authenticate()
-
-        with self.assertNumQueries(0):
-            response = self.client.get(self.url)
-
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual([item["id"] for item in response.data], [1, 2, 3])
-        self.assertEqual(
-            response.data[0]["title"],
-            MOCK_JOURNAL_CONTEXTS[0].title,
-        )
-        self.assertEqual(
-            set(response.data[0]),
-            {"id", "title", "content", "created_at"},
-        )
-
-    def test_endpoint_is_read_only_and_never_creates_rows(self):
-        self.authenticate()
-
-        response = self.client.post(self.url, {"title": "Fake"}, format="json")
-
-        self.assertEqual(
-            response.status_code,
-            status.HTTP_405_METHOD_NOT_ALLOWED,
-        )
-        self.assertEqual(MediaFile.objects.count(), 0)
-
-    def test_endpoint_requires_authentication(self):
-        response = self.client.get(self.url)
-
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
-
 class MediaRouteTests(SimpleTestCase):
     def test_static_routes_are_not_captured_by_the_detail_route(self):
         self.assertEqual(
             resolve("/api/media/generate/").url_name,
             "media-generate",
         )
-        self.assertEqual(
-            resolve("/api/media/mock-journal-entries/").url_name,
-            "media-mock-journal-entries",
-        )
         self.assertEqual(resolve("/api/media/").url_name, "media-list")
+
+    def test_mock_journal_endpoint_is_gone(self):
+        with self.assertRaises(Resolver404):
+            resolve("/api/media/mock-journal-entries/")
 
     def test_detail_route_only_accepts_integer_ids(self):
         match = resolve("/api/media/7/")

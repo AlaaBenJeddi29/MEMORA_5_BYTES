@@ -4,12 +4,16 @@ import react from '@vitejs/plugin-react'
 const BACKEND_URL = 'http://127.0.0.1:8000'
 
 // Route API and media requests through the dev server so the browser sees one
-// origin. That keeps the session/CSRF cookies first-party and avoids the
-// unsafe-looking cross-site `Set-Cookie` handling. The original Host header is
-// preserved (changeOrigin is off), so Django's CSRF Origin check still matches.
+// origin. That keeps session and CSRF cookies first-party and avoids
+// cross-site cookie handling. The original Host header is preserved so
+// Django's CSRF Origin check can match.
 const devProxy = {
-  '/api': { target: BACKEND_URL },
-  '/media': { target: BACKEND_URL },
+  '/api': {
+    target: BACKEND_URL,
+  },
+  '/media': {
+    target: BACKEND_URL,
+  },
 }
 
 // The dev server must stay on port 3000 and fail loudly if it is taken.

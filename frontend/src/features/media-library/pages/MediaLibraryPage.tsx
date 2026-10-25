@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 
 import { Alert } from '../../../components/Alert'
 import { Button } from '../../../components/Button'
@@ -8,8 +9,12 @@ import { PageHeader } from '../../../components/PageHeader'
 import { TextInput } from '../../../components/TextInput'
 import { useDocumentTitle } from '../../../hooks/useDocumentTitle'
 import { normalizeApiError, type NormalizedErrors } from '../../../services/errors'
+import { journalApi } from '../../../services/journal'
 import { mediaApi } from '../../../services/media'
-import type { MediaItem, MediaType, MockJournalEntry } from '../../../types/media'
+import { summariesApi } from '../../../services/summaries'
+import type { JournalEntry } from '../../../types/journal'
+import type { MediaItem, MediaType } from '../../../types/media'
+import type { Summary } from '../../../types/summaries'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { GenerateImageForm } from '../components/GenerateImageForm'
 import { MediaCard } from '../components/MediaCard'
@@ -19,22 +24,52 @@ import { UploadForm } from '../components/UploadForm'
 import { EMPTY_ERRORS, flattenFormErrors } from '../mediaHelpers'
 import '../media-library.css'
 
+function positiveIntParam(value: string | null): number | null {
+  if (!value) {
+    return null
+  }
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null
+}
+
+function errorMessage(error: unknown, fallback: string): string {
+  const normalized = normalizeApiError(error)
+  return normalized.detail ?? normalized.formErrors[0] ?? fallback
+}
+
 type LoadState = 'loading' | 'ready' | 'error'
 type TypeFilter = 'all' | MediaType
 type SortOrder = 'newest' | 'oldest'
 
 export function MediaLibraryPage() {
   useDocumentTitle('Media library · MEMORA')
+  const [searchParams] = useSearchParams()
+
+  // Query parameters are selection hints only. The server re-validates every
+  // ID against the signed-in owner before generation.
+  const initialSummaryId = useMemo(
+    () => positiveIntParam(searchParams.get('summary_id')),
+    [searchParams],
+  )
+  const initialJournalEntryId = useMemo(
+    () => positiveIntParam(searchParams.get('journal_entry_id')),
+    [searchParams],
+  )
 
   const [items, setItems] = useState<MediaItem[]>([])
   const [loadState, setLoadState] = useState<LoadState>('loading')
   const [loadErrors, setLoadErrors] = useState<NormalizedErrors>(EMPTY_ERRORS)
   const [reloadKey, setReloadKey] = useState(0)
 
-  const [memories, setMemories] = useState<MockJournalEntry[]>([])
-  const [memoriesLoading, setMemoriesLoading] = useState(true)
-  const [memoriesError, setMemoriesError] = useState<string | null>(null)
-  const [memoryReloadKey, setMemoryReloadKey] = useState(0)
+  const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([])
+  const [journalEntriesLoading, setJournalEntriesLoading] = useState(true)
+  const [journalEntriesError, setJournalEntriesError] = useState<string | null>(null)
+  const [journalReloadKey, setJournalReloadKey] = useState(0)
+
+  const [summaries, setSummaries] = useState<Summary[]>([])
+  const [summariesLoading, setSummariesLoading] = useState(true)
+  const [summariesError, setSummariesError] = useState<string | null>(null)
+  const [summaryReloadKey, setSummaryReloadKey] = useState(0)
 
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
   const [query, setQuery] = useState('')
@@ -73,33 +108,57 @@ export function MediaLibraryPage() {
 
   useEffect(() => {
     let ignore = false
-    setMemoriesLoading(true)
-    setMemoriesError(null)
+    setJournalEntriesLoading(true)
+    setJournalEntriesError(null)
 
-    mediaApi
-      .listMockJournalEntries()
+    journalApi
+      .listAll()
       .then((entries) => {
         if (!ignore) {
-          setMemories(entries)
-          setMemoriesLoading(false)
+          setJournalEntries(entries)
+          setJournalEntriesLoading(false)
         }
       })
       .catch((error: unknown) => {
         if (!ignore) {
-          const normalized = normalizeApiError(error)
-          setMemoriesError(
-            normalized.detail ??
-              normalized.formErrors[0] ??
-              'Sample memories could not be loaded.',
+          setJournalEntriesError(
+            errorMessage(error, 'Your journal entries could not be loaded.'),
           )
-          setMemoriesLoading(false)
+          setJournalEntriesLoading(false)
         }
       })
 
     return () => {
       ignore = true
     }
-  }, [memoryReloadKey])
+  }, [journalReloadKey])
+
+  useEffect(() => {
+    let ignore = false
+    setSummariesLoading(true)
+    setSummariesError(null)
+
+    summariesApi
+      .list()
+      .then((items) => {
+        if (!ignore) {
+          setSummaries(items)
+          setSummariesLoading(false)
+        }
+      })
+      .catch((error: unknown) => {
+        if (!ignore) {
+          setSummariesError(
+            errorMessage(error, 'Your summaries could not be loaded.'),
+          )
+          setSummariesLoading(false)
+        }
+      })
+
+    return () => {
+      ignore = true
+    }
+  }, [summaryReloadKey])
 
   const originalCount = useMemo(
     () => items.filter((item) => item.media_type === 'original').length,
@@ -119,7 +178,12 @@ export function MediaLibraryPage() {
       return (
         item.prompt.toLowerCase().includes(needle) ||
         String(item.id).includes(needle) ||
-        (item.journal_entry_id !== null && String(item.journal_entry_id).includes(needle))
+        (item.summary_id !== null && String(item.summary_id).includes(needle)) ||
+        item.journal_entries.some(
+          (entry) =>
+            String(entry.id).includes(needle) ||
+            entry.title.toLowerCase().includes(needle),
+        )
       )
     })
 
@@ -270,7 +334,7 @@ export function MediaLibraryPage() {
                   <TextInput
                     {...field}
                     type="search"
-                    placeholder="Prompt, image ID, or sample memory"
+                    placeholder="Prompt, image ID, or journal entry"
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
                   />
@@ -443,21 +507,20 @@ export function MediaLibraryPage() {
               </div>
             </div>
             <GenerateImageForm
-              memories={memories}
-              memoriesLoading={memoriesLoading}
-              memoriesError={memoriesError}
+              key={`${initialSummaryId ?? 'none'}:${initialJournalEntryId ?? 'none'}`}
+              journalEntries={journalEntries}
+              journalEntriesLoading={journalEntriesLoading}
+              journalEntriesError={journalEntriesError}
+              onReloadJournalEntries={() => setJournalReloadKey((key) => key + 1)}
+              summaries={summaries}
+              summariesLoading={summariesLoading}
+              summariesError={summariesError}
+              onReloadSummaries={() => setSummaryReloadKey((key) => key + 1)}
+              initialJournalEntryId={initialJournalEntryId}
+              initialSummaryId={initialSummaryId}
               onGenerated={addMedia}
               onView={(media) => setSelected(media)}
             />
-            {memoriesError && (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setMemoryReloadKey((key) => key + 1)}
-              >
-                Reload sample memories
-              </Button>
-            )}
           </section>
         </div>
       </section>

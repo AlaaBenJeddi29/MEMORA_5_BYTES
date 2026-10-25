@@ -163,6 +163,7 @@ like other unsafe MEMORA API calls.
 {
   "prompt": "A quiet lake at dawn, watercolor",
   "journal_entry_id": 1,
+  "summary_id": 4,
   "width": 512,
   "height": 512,
   "steps": 20,
@@ -170,15 +171,15 @@ like other unsafe MEMORA API calls.
 }
 ```
 
-- `prompt` is required unless `journal_entry_id` is supplied. Default maximum:
-  1000 characters (`MEDIA_GENERATION_MAX_PROMPT_LENGTH`).
-- `journal_entry_id` is resolved through the existing in-memory mock provider.
-  If `prompt` is omitted, the backend builds it from that provider's **title
-  only**. The journal body is never sent to ComfyUI. Client-supplied
-  title/content fields are ignored.
-- When Module 3 is ready, its `illustration_prompt` can be sent through the same
-  `prompt` field after user approval. This integration does not call Gemini or
-  summarize anything.
+- At least one of `prompt`, `journal_entry_id`, or `summary_id` is required.
+  Default maximum: 1000 characters (`MEDIA_GENERATION_MAX_PROMPT_LENGTH`).
+- `journal_entry_id` and `summary_id` are resolved through owner-scoped ORM
+  queries. Missing or foreign IDs return a generic `400`; a summary paired with
+  a different journal entry is rejected.
+- Prompt precedence: manual `prompt` → the summary's stored
+  `illustration_prompt` → the journal entry's title and recap. Journal body
+  text is never sent to ComfyUI, and client-supplied title/text fields are
+  ignored. Summary generation is not repeated; Gemini is not called by Module 4.
 - Default allowed sizes: `512x512`, `512x768`, `768x512`
   (`MEDIA_GENERATION_ALLOWED_SIZES`; first value is the default).
 - `steps`: 1-30 by default (`MEDIA_GENERATION_MIN_STEPS`,
@@ -199,6 +200,10 @@ like other unsafe MEMORA API calls.
   "prompt": "A quiet lake at dawn, watercolor",
   "status": "succeeded",
   "journal_entry_id": 1,
+  "journal_entries": [{ "id": 1, "title": "Morning walk" }],
+  "summary_id": 4,
+  "provider": "comfyui",
+  "model": "v1-5-pruned-emaonly.safetensors",
   "created_at": "2026-10-24T20:30:00.000000Z",
   "updated_at": "2026-10-24T20:30:00.000000Z"
 }

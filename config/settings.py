@@ -1,16 +1,11 @@
-"""
-Django settings for the MEMORA project.
+"""Django settings for the MEMORA project.
 
 MEMORA is a private, personal multimodal journal (text, audio, images,
-people) built as a university Django project. This file is intentionally
-kept to Django defaults plus the small amount of configuration the
-scaffold needs, so it stays easy to read for beginners.
+people) built as a university Django project.
 
-Configuration values that differ between machines or that are secret are
-read from environment variables. For local development they are loaded
-from a ``.env`` file in the project root (copy ``.env.example`` to
-``.env`` and fill it in). Sensible development fallbacks are used when a
-variable is missing, so the project still runs out of the box.
+Configuration values that differ between machines or are secret are
+read from environment variables. For local development, they are loaded
+from a .env file in the project root.
 
 Docs: https://docs.djangoproject.com/en/5.2/ref/settings/
 """
@@ -21,22 +16,35 @@ from pathlib import Path
 from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
-# BASE_DIR is the folder that contains manage.py (the project root).
+
+# ============================================================
+# BASE DIRECTORY AND ENVIRONMENT VARIABLES
+# ============================================================
+
+# BASE_DIR is the folder containing manage.py.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Read KEY=VALUE pairs from .env into the environment. Safe to call even
-# if the file does not exist: it simply does nothing.
+# Load environment variables from the project root .env file.
 load_dotenv(BASE_DIR / ".env")
 
 
 def env_bool(name, default=False):
-    """Read a boolean environment variable ("true"/"1"/"yes" => True)."""
-    return os.environ.get(name, str(default)).strip().lower() in ("1", "true", "yes", "on")
+    """Read a boolean environment variable."""
+    return os.environ.get(name, str(default)).strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
 
 
 def env_list(name, default=""):
-    """Read a comma-separated environment variable into a list of strings."""
-    return [item.strip() for item in os.environ.get(name, default).split(",") if item.strip()]
+    """Read a comma-separated environment variable into a list."""
+    return [
+        item.strip()
+        for item in os.environ.get(name, default).split(",")
+        if item.strip()
+    ]
 
 
 def env_generation_sizes(name, default):
@@ -61,33 +69,53 @@ def env_generation_sizes(name, default):
     return tuple(sizes)
 
 
-# SECURITY WARNING: keep the secret key secret in production.
-# The fallback below is for local development only.
+def env_int(name, default):
+    """Read an integer environment variable, using a fallback if invalid."""
+    try:
+        return int(os.environ.get(name, "").strip() or default)
+    except ValueError:
+        return default
+
+
+# ============================================================
+# SECURITY
+# ============================================================
+
+# Keep the real secret key in .env.
+# The fallback is only for local development.
 SECRET_KEY = os.environ.get(
-    "DJANGO_SECRET_KEY", "django-insecure-dev-only-do-not-use-in-production"
+    "DJANGO_SECRET_KEY",
+    "django-insecure-dev-only-do-not-use-in-production",
 )
 
-# SECURITY WARNING: never run with DEBUG = True in production.
+# Never use DEBUG=True in production.
 DEBUG = env_bool("DJANGO_DEBUG", default=True)
 
-# Hosts the site is allowed to serve. Defaults cover local development.
-ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost")
+# Allowed hosts for local development.
+ALLOWED_HOSTS = env_list(
+    "DJANGO_ALLOWED_HOSTS",
+    "127.0.0.1,localhost,testserver",
+)
 
 
-# Application definition
+# ============================================================
+# APPLICATIONS
+# ============================================================
 
 INSTALLED_APPS = [
-    # Django built-in apps
+    # Django built-in applications
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    # Third-party apps
+
+    # Third-party applications
     "rest_framework",
     "corsheaders",
-    # Local apps (all live under the `apps/` package)
+
+    # MEMORA local applications
     "apps.accounts",
     "apps.journal",
     "apps.audio",
@@ -96,10 +124,17 @@ INSTALLED_APPS = [
     "apps.people",
 ]
 
+
+# ============================================================
+# MIDDLEWARE
+# ============================================================
+
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
-    # CorsMiddleware must sit as high as possible, above CommonMiddleware.
+
+    # CORS middleware must be placed before CommonMiddleware.
     "corsheaders.middleware.CorsMiddleware",
+
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -107,6 +142,11 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
+
+
+# ============================================================
+# URLS AND TEMPLATES
+# ============================================================
 
 ROOT_URLCONF = "config.urls"
 
@@ -128,9 +168,11 @@ TEMPLATES = [
 WSGI_APPLICATION = "config.wsgi.application"
 
 
-# Database
-# SQLite is used for local development (a single file, no server needed).
+# ============================================================
+# DATABASE
+# ============================================================
 
+# SQLite database for local development.
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
@@ -139,54 +181,80 @@ DATABASES = {
 }
 
 
-# Password validation
-# https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
+# ============================================================
+# PASSWORD VALIDATION
+# ============================================================
 
 AUTH_PASSWORD_VALIDATORS = [
-    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
-    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
-    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
-    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+    {
+        "NAME": (
+            "django.contrib.auth.password_validation."
+            "UserAttributeSimilarityValidator"
+        ),
+    },
+    {
+        "NAME": (
+            "django.contrib.auth.password_validation."
+            "MinimumLengthValidator"
+        ),
+    },
+    {
+        "NAME": (
+            "django.contrib.auth.password_validation."
+            "CommonPasswordValidator"
+        ),
+    },
+    {
+        "NAME": (
+            "django.contrib.auth.password_validation."
+            "NumericPasswordValidator"
+        ),
+    },
 ]
 
-# MEMORA uses Django's built-in User model for now. No custom
-# authentication is implemented at this stage.
+# MEMORA currently uses Django's built-in User model.
 
 
-# Internationalization
-# https://docs.djangoproject.com/en/5.2/topics/i18n/
+# ============================================================
+# INTERNATIONALIZATION
+# ============================================================
 
 LANGUAGE_CODE = "en-us"
+
 TIME_ZONE = "UTC"
+
 USE_I18N = True
+
 USE_TZ = True
 
 
-# Static files (CSS, JavaScript, images shipped with the code)
-# https://docs.djangoproject.com/en/5.2/howto/static-files/
+# ============================================================
+# STATIC FILES
+# ============================================================
 
 STATIC_URL = "static/"
-# Where `collectstatic` gathers files for deployment (local dev ignores it).
+
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 
-# Media files (user uploads: audio, photos, ...)
-# Served by Django only while DEBUG = True (see config/urls.py).
+# ============================================================
+# MEDIA FILES
+# ============================================================
+
+# User-uploaded audio files, photos, and other media.
+# Django serves these during development through config/urls.py.
 
 MEDIA_URL = "media/"
+
 MEDIA_ROOT = BASE_DIR / "media"
 
 # Maximum accepted image upload size (bytes) and decoded pixel count.
-# Both are configurable per environment; keep the defaults modest for a
-# local, single-user development storage setup.
 MEDIA_IMAGE_MAX_BYTES = int(os.environ.get("MEDIA_IMAGE_MAX_BYTES", 10 * 1024 * 1024))
 MEDIA_IMAGE_MAX_PIXELS = int(os.environ.get("MEDIA_IMAGE_MAX_PIXELS", 40_000_000))
 
 
 # Local ComfyUI image generation. The Django backend is the only component
 # that talks to ComfyUI; the browser never receives this URL or workflow.
-# There are no hosted providers, API keys, or tokens in this configuration.
-
 COMFYUI_BASE_URL = os.environ.get(
     "COMFYUI_BASE_URL", "http://127.0.0.1:8188"
 ).strip()
@@ -198,9 +266,7 @@ COMFYUI_CHECKPOINT = os.environ.get("COMFYUI_CHECKPOINT", "").strip()
 COMFYUI_TIMEOUT = float(os.environ.get("COMFYUI_TIMEOUT", "180"))
 COMFYUI_REQUEST_TIMEOUT = float(os.environ.get("COMFYUI_REQUEST_TIMEOUT", "15"))
 
-# Server-side generation guardrails. The first allowed size is the default.
-# These bounds mirror the local SD 1.5 workflow's supported inputs; they are
-# configurable for tuning, not for exposing extra provider parameters.
+# Server-side generation guardrails.
 MEDIA_GENERATION_MAX_PROMPT_LENGTH = int(
     os.environ.get("MEDIA_GENERATION_MAX_PROMPT_LENGTH", "1000")
 )
@@ -229,15 +295,16 @@ if (
     )
 
 
-# Default primary key field type
-# https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
+# ============================================================
+# DEFAULT PRIMARY KEY
+# ============================================================
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 
-# Django REST Framework
-# A minimal, safe default: requests must be authenticated unless a view
-# overrides it. The browsable API stays available for manual testing.
+# ============================================================
+# DJANGO REST FRAMEWORK
+# ============================================================
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
@@ -249,12 +316,69 @@ REST_FRAMEWORK = {
 }
 
 
-# Cross-Origin Resource Sharing (for the separate React frontend).
-# Only the listed origins may call the API from a browser. During local
-# development the React dev server usually runs on port 3000.
+# ============================================================
+# CORS — REACT / VITE FRONTEND
+# ============================================================
 
 CORS_ALLOWED_ORIGINS = env_list(
     "DJANGO_CORS_ALLOWED_ORIGINS",
-    "http://localhost:3000,http://127.0.0.1:3000",
+    (
+        "http://localhost:3000,"
+        "http://127.0.0.1:3000,"
+        "http://localhost:3001,"
+        "http://127.0.0.1:3001,"
+        "http://localhost:5173,"
+        "http://127.0.0.1:5173"
+    ),
 )
+
 CORS_ALLOW_CREDENTIALS = True
+
+
+# ============================================================
+# SESSION COOKIE SETTINGS
+# ============================================================
+
+SESSION_COOKIE_SAMESITE = "Lax"
+SESSION_COOKIE_SECURE = False
+SESSION_COOKIE_HTTPONLY = True
+
+
+# ============================================================
+# CSRF COOKIE SETTINGS
+# ============================================================
+
+CSRF_COOKIE_HTTPONLY = False
+CSRF_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SECURE = False
+
+
+# ============================================================
+# CSRF TRUSTED ORIGINS
+# ============================================================
+
+CSRF_TRUSTED_ORIGINS = env_list(
+    "DJANGO_CSRF_TRUSTED_ORIGINS",
+    (
+        "http://localhost:3000,"
+        "http://127.0.0.1:3000,"
+        "http://localhost:3001,"
+        "http://127.0.0.1:3001,"
+        "http://localhost:5173,"
+        "http://127.0.0.1:5173"
+    ),
+)
+
+
+# ============================================================
+# GOOGLE GEMINI CONFIGURATION
+# ============================================================
+
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
+
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "").strip()
+
+GEMINI_TIMEOUT_SECONDS = env_int(
+    "GEMINI_TIMEOUT_SECONDS",
+    30,
+)
