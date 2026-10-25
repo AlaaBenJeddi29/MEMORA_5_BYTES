@@ -92,9 +92,14 @@ class JournalEntryInput:
         if isinstance(entry, Mapping):
             title = entry.get("title")
             content = entry.get("content")
+            if content is None:
+                content = entry.get("text")
         else:
             title = getattr(entry, "title", None)
             content = getattr(entry, "content", None)
+            if content is None:
+                # Module 1's JournalEntry stores the body in ``text``.
+                content = getattr(entry, "text", None)
 
         if not isinstance(title, str) or not isinstance(content, str):
             raise SummaryInputError(

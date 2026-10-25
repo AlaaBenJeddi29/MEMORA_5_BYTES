@@ -2,13 +2,14 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { jsonResponse } from '../../../test/fakeResponse'
+import type { JournalEntry, JournalPage } from '../../../types/journal'
 import type { Summary } from '../../../types/summaries'
 import { SummariesPage } from './SummariesPage'
 
 const SUMMARY: Summary = {
   id: 1,
   owner: 1,
-  journal_entry_id: 900001,
+  journal_entry_id: 2,
   summary_text: 'A calm morning walk through the park.',
   mood: 'calm',
   themes: ['nature', 'rest'],
@@ -17,13 +18,28 @@ const SUMMARY: Summary = {
   updated_at: '2026-10-20T07:50:00Z',
 }
 
-const MOCK_OPTIONS = [
+const JOURNAL_ENTRIES: JournalEntry[] = [
   {
-    id: 900002,
+    id: 2,
+    user: 1,
     title: 'Project stand-up',
+    text: 'The team stand-up ran longer than expected.',
+    audio_file: '',
+    summary_text: '',
+    sentiment: '',
     created_at: '2026-10-21T09:30:00Z',
+    photos: [],
   },
 ]
+
+const JOURNAL_PAGE: JournalPage = {
+  count: JOURNAL_ENTRIES.length,
+  next: null,
+  previous: null,
+  results: JOURNAL_ENTRIES,
+}
+
+const JOURNAL_PICKER_URL = '/api/journal/entries/?page=1&page_size=100'
 
 interface FetchCall {
   url: string
@@ -68,7 +84,7 @@ describe('SummariesPage', () => {
     expect(screen.getByText('Loading summaries…')).toBeTruthy()
     expect(await screen.findByText(SUMMARY.summary_text)).toBeTruthy()
     expect(
-      screen.getByRole('heading', { name: 'Summary for entry #900001' }),
+      screen.getByRole('heading', { name: 'Summary for journal entry #2' }),
     ).toBeTruthy()
     expect(screen.getByText('calm')).toBeTruthy()
     expect(screen.getByText('nature')).toBeTruthy()
@@ -218,11 +234,11 @@ describe('SummariesPage', () => {
     expect(getCount).toBe(2)
   })
 
-  it('generates a summary by sending only the mock entry ID', async () => {
+  it('generates a summary by sending only the real journal entry ID', async () => {
     const generated: Summary = {
       ...SUMMARY,
       id: 9,
-      journal_entry_id: 900002,
+      journal_entry_id: 2,
       summary_text: 'A tense but productive stand-up.',
     }
     let getCount = 0
@@ -233,8 +249,8 @@ describe('SummariesPage', () => {
         getCount += 1
         return jsonResponse(getCount === 1 ? [] : [generated])
       }
-      if (url.endsWith('/api/summaries/mock-journal-entries/')) {
-        return jsonResponse(MOCK_OPTIONS)
+      if (url.endsWith(JOURNAL_PICKER_URL)) {
+        return jsonResponse(JOURNAL_PAGE)
       }
       if (url.endsWith('/api/summaries/generate/') && method === 'POST') {
         return jsonResponse(generated, 201)
@@ -249,24 +265,19 @@ describe('SummariesPage', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Generate a summary' })
     const select = await within(dialog).findByLabelText(/Journal entry/)
     expect(within(select).getByRole('option', { name: /Project stand-up/ })).toBeTruthy()
-    expect(within(select).queryByRole('option', { name: /Morning walk/ })).toBeNull()
-    fireEvent.change(select, { target: { value: '900002' } })
+    fireEvent.change(select, { target: { value: '2' } })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Generate summary' }))
 
     expect(await screen.findByText('Summary generated.')).toBeTruthy()
     expect(await screen.findByText(generated.summary_text)).toBeTruthy()
 
     const calls = callsOf(fetchMock)
-    expect(
-      calls.some((call) =>
-        call.url.endsWith('/api/summaries/mock-journal-entries/'),
-      ),
-    ).toBe(true)
+    expect(calls.some((call) => call.url.endsWith(JOURNAL_PICKER_URL))).toBe(true)
     const generate = calls.find((call) =>
       call.url.endsWith('/api/summaries/generate/'),
     )
     expect(generate?.init.method).toBe('POST')
-    expect(jsonBody(generate)).toEqual({ journal_entry_id: 900002 })
+    expect(jsonBody(generate)).toEqual({ journal_entry_id: 2 })
     expect(getCount).toBe(2)
     // The shared client supplied the CSRF header from the cookie.
     expect((generate?.init.headers as Record<string, string>)['X-CSRFToken']).toBe(
@@ -280,8 +291,8 @@ describe('SummariesPage', () => {
       if (url.endsWith('/api/summaries/') && method === 'GET') {
         return jsonResponse([])
       }
-      if (url.endsWith('/api/summaries/mock-journal-entries/')) {
-        return jsonResponse(MOCK_OPTIONS)
+      if (url.endsWith(JOURNAL_PICKER_URL)) {
+        return jsonResponse(JOURNAL_PAGE)
       }
       if (url.endsWith('/api/summaries/generate/') && method === 'POST') {
         return jsonResponse(
@@ -298,7 +309,7 @@ describe('SummariesPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Generate summary' }))
     const dialog = await screen.findByRole('dialog', { name: 'Generate a summary' })
     const select = await within(dialog).findByLabelText(/Journal entry/)
-    fireEvent.change(select, { target: { value: '900002' } })
+    fireEvent.change(select, { target: { value: '2' } })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Generate summary' }))
 
     expect(
@@ -313,7 +324,7 @@ describe('SummariesPage', () => {
     ).toBe(false)
   })
 
-  it('retries loading the mock entry choices after a failure', async () => {
+  it('retries loading the real journal entry choices after a failure', async () => {
     let entryCalls = 0
 
     installFetch(({ url, init }) => {
@@ -321,12 +332,12 @@ describe('SummariesPage', () => {
       if (url.endsWith('/api/summaries/') && method === 'GET') {
         return jsonResponse([])
       }
-      if (url.endsWith('/api/summaries/mock-journal-entries/')) {
+      if (url.endsWith(JOURNAL_PICKER_URL)) {
         entryCalls += 1
         if (entryCalls === 1) {
           return jsonResponse({ detail: 'Journal entries are unavailable.' }, 503)
         }
-        return jsonResponse(MOCK_OPTIONS)
+        return jsonResponse(JOURNAL_PAGE)
       }
       throw new Error(`Unexpected request: ${method} ${url}`)
     })
@@ -346,6 +357,28 @@ describe('SummariesPage', () => {
     const select = await within(dialog).findByLabelText(/Journal entry/)
     expect(within(select).getByRole('option', { name: /Project stand-up/ })).toBeTruthy()
     expect(entryCalls).toBe(2)
+  })
+
+  it('shows an empty state when the user has no journal entries', async () => {
+    installFetch(({ url, init }) => {
+      const method = init.method ?? 'GET'
+      if (url.endsWith('/api/summaries/') && method === 'GET') {
+        return jsonResponse([])
+      }
+      if (url.endsWith(JOURNAL_PICKER_URL)) {
+        return jsonResponse({ count: 0, next: null, previous: null, results: [] })
+      }
+      throw new Error(`Unexpected request: ${method} ${url}`)
+    })
+
+    render(<SummariesPage />)
+    await screen.findByText('No summaries yet')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate summary' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Generate a summary' })
+
+    expect(await within(dialog).findByText('No journal entries yet')).toBeTruthy()
+    expect(within(dialog).queryByLabelText(/Journal entry/)).toBeNull()
   })
 
   it('shows a network error and retries loading the list', async () => {

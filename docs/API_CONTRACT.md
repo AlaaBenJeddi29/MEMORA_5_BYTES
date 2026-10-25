@@ -16,9 +16,9 @@ Base URL for local development: `http://127.0.0.1:8000`
 | Area | Mounted prefix today | Implemented endpoints today |
 | --- | --- | --- |
 | Accounts | `/api/accounts/` | register, login, logout, me, csrf |
-| Journal | `/api/journal/` | none (empty router) |
+| Journal | `/api/journal/` | entries CRUD + search (§3.2) |
 | Audio | `/api/audio/` | list, upload, detail, patch, delete (§3.3) |
-| Summaries | `/api/summaries/` | none (empty router) |
+| Summaries | `/api/summaries/` | list, manual CRUD, generate (§3.4) |
 | Media | `/api/media/` | none (empty router) |
 | People | `/api/people/` | none (empty router) |
 
@@ -470,32 +470,26 @@ their own message; none of them is ever replaced by a fake transcript.
   `{"non_field_errors": ["No entries found for the requested period."]}`.
 - AI failures never leak internals: `{"status": "failed", "error": "Summarization failed."}`.
 
-#### Implemented Module 3 shape (temporary journal source)
+#### Implemented Module 3 shape (real Module 1 journal source)
 
-The current implementation differs from the async proposal above and will be
-reconciled when Module 1 lands:
+The synchronous generation endpoint is the current implementation; the async
+proposal above is not built yet.
 
 | Method | Path | Auth | Notes |
 | --- | --- | --- | --- |
 | `GET` | `/api/summaries/` | Required | Caller's summaries only |
-| `POST` | `/api/summaries/` | Required | Manual create; owner from session |
-| `PATCH` | `/api/summaries/{id}/` | Required | 404 if not owner |
+| `POST` | `/api/summaries/` | Required | Manual create; owner from session; optional owned `journal_entry_id` |
+| `PATCH` | `/api/summaries/{id}/` | Required | 404 if not owner; entry must be owned |
 | `DELETE` | `/api/summaries/{id}/` | Required | 404 if not owner |
-| `GET` | `/api/summaries/mock-journal-entries/` | Required | **Temporary**, read-only picker |
-| `POST` | `/api/summaries/generate/` | Required | Body `{"journal_entry_id": 900001}` |
+| `POST` | `/api/summaries/generate/` | Required | Body `{"journal_entry_id": 12}` |
 
-`mock-journal-entries/` returns only `id`, `title`, and `created_at`; it never
-exposes journal content and supports `GET` only (other verbs → `405`). The
-fixtures are not stored in SQLite, have no detail route, and cannot be created,
-edited, or deleted through the API. Generation accepts only the ID; the server
-resolves the content from the provider and calls Gemini.
-
-**Replacement point:** `apps/summaries/journal_provider.py`. Once Module 1's
-`JournalEntry` model/API contract and migrations are agreed, implement
-`JournalEntryProvider` against it (filtering by `user`) and replace the
-`journal_provider` singleton. Views, serializers, and the React feature do not
-change. Do not add a `JournalEntry` foreign key to `Summary` before that contract
-exists.
+Generation accepts only the ID of one of the caller's entries. Django resolves
+it through `apps/summaries/journal_provider.py` (ORM query on
+`journal.JournalEntry` filtered by `user`), so another user's or a missing entry
+returns `404` and is never sent to Gemini. The entry's `title` and `text` are
+sent to the existing Gemini service, and the saved `Summary` stores a nullable
+FK (`journal_entry`, column `journal_entry_id`, `SET_NULL`) to the source entry.
+The React picker reuses Module 1's `GET /api/journal/entries/`.
 
 ### 3.5 Media
 

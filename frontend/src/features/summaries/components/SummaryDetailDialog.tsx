@@ -23,7 +23,7 @@ export function SummaryDetailDialog({ summary, onClose }: SummaryDetailDialogPro
         {summary.journal_entry_id !== null && (
           <div className="detail-list__row">
             <dt>Journal entry</dt>
-            <dd>Mock entry #{summary.journal_entry_id}</dd>
+            <dd>Journal entry #{summary.journal_entry_id}</dd>
           </div>
         )}
 

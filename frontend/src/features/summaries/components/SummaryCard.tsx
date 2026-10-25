@@ -13,7 +13,7 @@ export function SummaryCard({ summary, onView, onEdit, onDelete }: SummaryCardPr
   const title =
     summary.journal_entry_id === null
       ? `Summary #${summary.id}`
-      : `Summary for entry #${summary.journal_entry_id}`
+      : `Summary for journal entry #${summary.journal_entry_id}`
 
   return (
     <li className="card summary-card">
