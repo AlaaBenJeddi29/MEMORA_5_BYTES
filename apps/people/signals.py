@@ -1,5 +1,6 @@
 import logging
 
+from django.db import transaction
 from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
 
@@ -26,9 +27,30 @@ def process_new_media_file(sender, instance, created, **kwargs):
 
 @receiver(post_delete, sender=MediaFile)
 def delete_media_file(sender, instance, **kwargs):
-    """Supprime le fichier image du disque avec la photo."""
-    if instance.photo:
-        instance.photo.delete(save=False)
+    """Supprime le fichier apres validation, s'il n'est plus reference."""
+    field_file = instance.file
+    if not field_file:
+        return
+
+    file_name = field_file.name
+    storage = field_file.storage
+    if not file_name:
+        return
+
+    media_id = instance.pk
+
+    def cleanup():
+        try:
+            if MediaFile.objects.filter(file=file_name).exists():
+                return
+            storage.delete(file_name)
+        except Exception:
+            logger.warning(
+                'Stored file cleanup failed for deleted media %s.',
+                media_id,
+            )
+
+    transaction.on_commit(cleanup)
 
 
 @receiver(post_delete, sender=DetectedFace)

@@ -22,10 +22,10 @@
     {% for photo in photos %}
         <div class="card thumb">
             <a href="{% url 'people:photo_detail' photo.pk %}">
-                <img src="{{ photo.photo.url }}" alt="Photo {{ photo.pk }}">
+                <img src="{{ photo.file.url }}" alt="Photo {{ photo.pk }}">
             </a>
             <p>Photo #{{ photo.pk }} - {{ photo.faces.count }} visage(s)</p>
-            <p>{{ photo.uploaded_at|date:"d/m/Y H:i" }}</p>
+            <p>{{ photo.created_at|date:"d/m/Y H:i" }}</p>
             <form method="post" action="{% url 'people:photo_delete' photo.pk %}">
                 {% csrf_token %}
                 <button type="submit" onclick="return confirm('Supprimer cette photo ?');">Supprimer</button>

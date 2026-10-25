@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 
 import { Alert } from '../../../components/Alert'
 import { Button } from '../../../components/Button'
@@ -8,6 +8,7 @@ import { LoadingState } from '../../../components/LoadingState'
 import { PageHeader } from '../../../components/PageHeader'
 import { useDocumentTitle } from '../../../hooks/useDocumentTitle'
 import { FaceTaggingCard } from '../components/FaceTaggingCard'
+import { PeopleNav } from '../components/PeopleNav'
 import { describeApiError } from '../describeApiError'
 import { peopleApi } from '../peopleApi'
 import type { Person, PhotoDetail } from '../types'
@@ -53,9 +54,10 @@ export function PhotoTaggingPage() {
 
   return (
     <>
-      <p>
-        <Link to="/app/people/photos">← Retour à mes photos</Link>
-      </p>
+      <PeopleNav
+        section="photos"
+        currentLabel={photo ? `Photo #${photo.id}` : undefined}
+      />
 
       <PageHeader
         title={photo ? `Photo #${photo.id}` : 'Tagging'}

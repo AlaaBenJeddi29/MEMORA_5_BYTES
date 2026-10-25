@@ -18,7 +18,7 @@ BOUNDING_BOX = {'top': 0, 'right': 10, 'bottom': 10, 'left': 0}
 def create_photo(owner, name='photo.png'):
     # On evite de lancer la detection pendant les tests.
     with patch('apps.people.signals.process_photo'):
-        return MediaFile.objects.create(owner=owner, photo='photos/' + name)
+        return MediaFile.objects.create(owner=owner, file='photos/' + name)
 
 
 class SuggestionTests(TestCase):
@@ -78,13 +78,13 @@ class SignalTests(TestCase):
 
     def test_process_photo_runs_when_media_is_created(self):
         with patch('apps.people.signals.process_photo') as process:
-            MediaFile.objects.create(owner=self.user, photo='photos/new.png')
+            MediaFile.objects.create(owner=self.user, file='photos/new.png')
 
         process.assert_called_once()
 
     def test_process_photo_does_not_run_when_media_is_updated(self):
         with patch('apps.people.signals.process_photo'):
-            photo = MediaFile.objects.create(owner=self.user, photo='photos/old.png')
+            photo = MediaFile.objects.create(owner=self.user, file='photos/old.png')
 
         with patch('apps.people.signals.process_photo') as process:
             photo.save()

@@ -8,6 +8,7 @@ import { LoadingState } from '../../../components/LoadingState'
 import { PageHeader } from '../../../components/PageHeader'
 import { useDocumentTitle } from '../../../hooks/useDocumentTitle'
 import { formatDateTime } from '../../../utils/format'
+import { PeopleNav } from '../components/PeopleNav'
 import { describeApiError } from '../describeApiError'
 import { peopleApi } from '../peopleApi'
 import type { PhotoSummary } from '../types'
@@ -37,9 +38,7 @@ export function MyPhotosPage() {
 
   return (
     <>
-      <p>
-        <Link to="/app/people">← Retour aux personnes</Link>
-      </p>
+      <PeopleNav section="photos" />
 
       <PageHeader
         title="Mes photos"

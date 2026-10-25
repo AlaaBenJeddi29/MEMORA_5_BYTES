@@ -8,6 +8,7 @@ import { LoadingState } from '../../../components/LoadingState'
 import { PageHeader } from '../../../components/PageHeader'
 import { useDocumentTitle } from '../../../hooks/useDocumentTitle'
 import { formatDateTime } from '../../../utils/format'
+import { PeopleNav } from '../components/PeopleNav'
 import { PersonForm, type PersonFormValues } from '../components/PersonForm'
 import { describeApiError } from '../describeApiError'
 import { peopleApi } from '../peopleApi'
@@ -54,9 +55,7 @@ export function PersonAlbumPage() {
 
   return (
     <>
-      <p>
-        <Link to="/app/people">← Retour aux personnes</Link>
-      </p>
+      <PeopleNav section="people" currentLabel={person?.name} />
 
       <PageHeader
         title={person ? `Photos avec ${person.name}` : 'Album'}

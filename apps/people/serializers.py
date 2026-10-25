@@ -50,6 +50,8 @@ class DetectedFaceSerializer(serializers.ModelSerializer):
 
 class PhotoSerializer(serializers.ModelSerializer):
     faces_count = serializers.IntegerField(source='faces.count', read_only=True)
+    photo = serializers.ImageField(source='file', read_only=True)
+    uploaded_at = serializers.DateTimeField(source='created_at', read_only=True)
 
     class Meta:
         model = MediaFile
@@ -58,6 +60,8 @@ class PhotoSerializer(serializers.ModelSerializer):
 
 class PhotoDetailSerializer(serializers.ModelSerializer):
     faces = DetectedFaceSerializer(many=True, read_only=True)
+    photo = serializers.ImageField(source='file', read_only=True)
+    uploaded_at = serializers.DateTimeField(source='created_at', read_only=True)
 
     class Meta:
         model = MediaFile

@@ -7,6 +7,7 @@ import { EmptyState } from '../../../components/EmptyState'
 import { LoadingState } from '../../../components/LoadingState'
 import { PageHeader } from '../../../components/PageHeader'
 import { useDocumentTitle } from '../../../hooks/useDocumentTitle'
+import { PeopleNav } from '../components/PeopleNav'
 import { PersonForm, type PersonFormValues } from '../components/PersonForm'
 import { describeApiError } from '../describeApiError'
 import { peopleApi } from '../peopleApi'
@@ -73,6 +74,8 @@ export function PeoplePage() {
 
   return (
     <>
+      <PeopleNav section="people" />
+
       <PageHeader
         title="Personnes"
         description="Les personnes qui apparaissent dans vos souvenirs."

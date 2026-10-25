@@ -93,7 +93,7 @@ def process_photo(media_file):
     if face_recognition is None:
         return
 
-    results = detect_and_encode(media_file.photo.path)
+    results = detect_and_encode(media_file.file.path)
     for index, result in enumerate(results, start=1):
         detected_face = DetectedFace.objects.create(
             photo=media_file,
@@ -107,6 +107,6 @@ def process_photo(media_file):
             detected_face.distance = suggestion[1]
             detected_face.save()
 
-        crop = crop_face(media_file.photo.path, result['bounding_box'])
+        crop = crop_face(media_file.file.path, result['bounding_box'])
         filename = 'face_%s_%s.jpg' % (media_file.pk, index)
         detected_face.face_crop.save(filename, crop)

@@ -27,7 +27,7 @@
                 {% if face.face_crop %}
                     <img src="{{ face.face_crop.url }}" alt="Visage de {{ person.name }}">
                 {% else %}
-                    <img src="{{ face.photo.photo.url }}" alt="Photo">
+                    <img src="{{ face.photo.file.url }}" alt="Photo">
                 {% endif %}
             </a>
             <p>Photo #{{ face.photo.pk }}</p>

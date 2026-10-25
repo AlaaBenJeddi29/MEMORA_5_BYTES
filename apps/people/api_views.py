@@ -62,7 +62,7 @@ def person_photos(request, pk):
     faces = DetectedFace.objects.filter(
         person=person,
         photo__owner=request.user,
-    ).select_related('photo').order_by('-photo__uploaded_at', 'created_at')
+    ).select_related('photo').order_by('-photo__created_at', 'created_at')
 
     photos = []
     photos_by_id = {}
@@ -71,8 +71,8 @@ def person_photos(request, pk):
         if entry is None:
             entry = {
                 'id': face.photo_id,
-                'photo': request.build_absolute_uri(face.photo.photo.url),
-                'uploaded_at': face.photo.uploaded_at,
+                'photo': request.build_absolute_uri(face.photo.file.url),
+                'uploaded_at': face.photo.created_at,
                 'crops': [],
             }
             photos_by_id[face.photo_id] = entry
@@ -88,7 +88,7 @@ def person_photos(request, pk):
 def photo_list(request):
     photos = MediaFile.objects.filter(
         owner=request.user,
-    ).prefetch_related('faces').order_by('-uploaded_at')
+    ).prefetch_related('faces').order_by('-created_at')
     return Response(PhotoSerializer(photos, many=True, context=_context(request)).data)
 
 

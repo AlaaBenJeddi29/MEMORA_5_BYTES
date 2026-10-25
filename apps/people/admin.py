@@ -15,4 +15,4 @@ class DetectedFaceAdmin(admin.ModelAdmin):
     list_display = ('photo', 'person', 'suggested_person', 'distance')
     list_filter = ('person',)
     readonly_fields = ('encoding', 'bounding_box')
-    search_fields = ('person__name', 'photo__photo')
+    search_fields = ('person__name', 'photo__file')
