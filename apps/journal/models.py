@@ -26,5 +26,5 @@ class JournalEntry(models.Model):
     class Meta:
         ordering = ['-created_at']
 
-    def __str__(self):
+    def str(self):
         return f'{self.title} ({self.user})'

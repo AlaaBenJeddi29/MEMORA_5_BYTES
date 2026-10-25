@@ -184,12 +184,21 @@ CORS_ALLOWED_ORIGINS = env_list(
 )
 CORS_ALLOW_CREDENTIALS = True
 
-# CSRF trusted origins for POST requests (when using a proxy)
-CSRF_TRUSTED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-]
+# Session cookie settings — keep the session cookie accessible to the Vite
+# proxy in development (SameSite=Lax, not Strict, so it travels through the
+# proxy; no Secure flag since we're on plain HTTP locally).
+SESSION_COOKIE_SAMESITE = "Lax"
+SESSION_COOKIE_SECURE = False
+SESSION_COOKIE_HTTPONLY = True
 
-# Session cookie configuration for cross-origin requests
-SESSION_COOKIE_SAMESITE = 'Lax'  # Allow cookies for safe cross-origin requests
-CSRF_COOKIE_SAMESITE = 'Lax'     # Allow CSRF cookies for cross-origin requests
+# CSRF cookie must be readable by JavaScript (so the SPA can send X-CSRFToken).
+CSRF_COOKIE_HTTPONLY = False
+CSRF_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SECURE = False
+
+# Trust the Vite dev server origins for CSRF (module 2 uses 3000, 3001 is kept
+# for teammates still on the previous port).
+CSRF_TRUSTED_ORIGINS = env_list(
+    "DJANGO_CSRF_TRUSTED_ORIGINS",
+    "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001",
+)

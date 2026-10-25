@@ -17,13 +17,14 @@ Base URL for local development: `http://127.0.0.1:8000`
 | --- | --- | --- |
 | Accounts | `/api/accounts/` | register, login, logout, me, csrf |
 | Journal | `/api/journal/` | none (empty router) |
-| Audio | `/api/audio/` | none (empty router) |
+| Audio | `/api/audio/` | list, upload, detail, patch, delete (§3.3) |
 | Summaries | `/api/summaries/` | none (empty router) |
 | Media | `/api/media/` | none (empty router) |
 | People | `/api/people/` | none (empty router) |
 
-There are **no models** yet in any app — every `models.py` is an empty stub. So the
-field lists in section 3 are proposals, not existing schema.
+Aside from Audio (§3.3), which is implemented and has its own model, every app is
+a stub (Accounts reuses Django's built-in user). So the field lists in section 3
+are proposals, not existing schema.
 
 ---
 
@@ -351,24 +352,104 @@ Fields (proposal): `id`, `title`, `content`, `entry_date`, `created_at`, `update
 > project already mounts the app at `/api/journal/`. Recommended:
 > `/api/journal/entries/` (keeps one app = one prefix). See §4.
 
-### 3.3 Audio
+### 3.3 Audio **[IMPLEMENTED]**
 
 | Method | Path | Auth | Ownership |
 | --- | --- | --- | --- |
+| `GET` | `/api/audio/` | Required | Only the caller's entries |
 | `POST` | `/api/audio/` | Required | Upload owned by caller |
 | `GET` | `/api/audio/{id}/` | Required | 404 if not owner |
+| `PATCH` | `/api/audio/{id}/` | Required | 404 if not owner; `transcript`/`summary`, or a new `file` that re-runs the AI |
+| `DELETE` | `/api/audio/{id}/` | Required | 404 if not owner; deletes file too |
 
-Fields (proposal): `id`, `file`, `duration_seconds`, `transcript`, `sentiment`,
-`status` (§1.9), `created_at`. Upload via `multipart/form-data`.
+Fields: `id`, `file` (absolute URL), `duration_seconds`, `transcript`,
+`language_code`, `language_name`, `sentiment`, `sentiment_score`, `summary`,
+`status` (§1.9), `error`, `created_at`, `updated_at`. Upload via
+`multipart/form-data` (max 25 MB; allowed MIME types per §1.8 —
+mp3/wav/webm/mp4/ogg).
+
+AI processing (Groq: Whisper transcription, then an LLM for language detection,
+sentiment analysis and summary) runs on a **background thread**: the upload
+answers immediately with `status: "pending"`, and the client **must** poll
+`GET /api/audio/{id}/` (`pending → processing → succeeded|failed`) until a final
+status. Celery is the production successor; the contract does not change.
+
+Models used (configured in `apps/audio/services.py`, overridable through `.env`):
+`whisper-large-v3-turbo` (ASR, `GROQ_ASR_MODEL`) and `openai/gpt-oss-20b`
+(language, sentiment, summary — `GROQ_LLM_MODEL`). Groq's Whisper endpoint does
+not report the spoken language, so language detection is a separate LLM call over
+the transcript. `response_format: json_object` is requested for the structured
+language/sentiment answers, with a plain-text retry when a model rejects JSON
+mode.
 
 ```json
-// POST (multipart) -> 201
-{ "id": 5, "file": "http://127.0.0.1:8000/media/audio/1/memo.mp3",
-  "duration_seconds": 42.5, "transcript": null, "sentiment": null,
-  "status": "pending", "created_at": "2026-10-15T09:00:00.000000Z" }
+// POST (multipart) -> 201, processing continues in the background
+{ "id": 5, "file": "http://127.0.0.1:8000/media/audio/1/memo.webm",
+  "duration_seconds": null, "transcript": null,
+  "language_code": null, "language_name": null,
+  "sentiment": null, "sentiment_score": null, "summary": null,
+  "status": "pending", "error": null,
+  "created_at": "2026-10-15T09:00:00.000000Z",
+  "updated_at": "2026-10-15T09:00:00.000000Z" }
+
+// GET /api/audio/5/ a few seconds later -> 200
+{ "id": 5, "status": "succeeded", "transcript": "aujourd'hui il fait beau",
+  "language_code": "fr", "language_name": "French",
+  "sentiment": "positive", "sentiment_score": 0.93,
+  "summary": "A note about the nice weather.",
+  "duration_seconds": 3.2, "error": null }
 ```
 
+**Correcting the transcript.** The AI can mishear a word, so
+`PATCH /api/audio/{id}/` accepts `transcript` and `summary` — language, sentiment
+and `status` stay read-only because they are derived from the audio, not typed.
+Body may be partial (JSON), but at least one editable field is required.
+
+```json
+// PATCH /api/audio/5/  { "transcript": "aujourd'hui il fait très beau" } -> 200
+{ "id": 5, "status": "succeeded", "transcript": "aujourd'hui il fait très beau",
+  "summary": "A note about the nice weather.", "…": "same read fields as GET" }
+```
+
+**Replacing the recording.** The same route also accepts `file` as
+`multipart/form-data`, with the upload constraints of §1.8 (25 MB, same MIME
+allow-list). A new recording invalidates everything computed from the old one, so
+`duration_seconds`, `transcript`, `language_code`, `language_name`, `sentiment`,
+`sentiment_score`, `summary` and `error` are cleared, `status` goes back to
+`pending`, the previous file is deleted from storage, and the AI pipeline runs
+again — exactly like `POST /api/audio/`. The answer is the entry in `pending`
+state and the client resumes polling.
+
+`file` cannot be combined with `transcript`/`summary` in one request (the
+replacement empties them): `400`.
+
+```json
+// PATCH /api/audio/5/  multipart: file=prise_2.wav -> 200
+{ "id": 5, "status": "pending", "transcript": null, "summary": null,
+  "language_code": null, "language_name": null, "sentiment": null,
+  "sentiment_score": null, "duration_seconds": null, "error": null,
+  "file": "http://127.0.0.1:8000/media/audio/1/prise_2.wav" }
+```
+
+Only a real upload is accepted: a storage path sent as a string → `400`
+(`{"file": ["Send the recording as a file upload, not a stored path."]}`), so no
+client can attach — and therefore read — another user's saved recording.
+
+An empty payload → `400`
+(`{"non_field_errors": ["Provide at least one editable field: transcript, summary or file."]}`).
+Editing while `status` is `pending`/`processing` → `409`
+(`{"detail": "This memo is still being transcribed. Save your edit once it finishes."}`),
+because the worker would overwrite the correction. A `failed` memo stays editable,
+so the user can type the text by hand or send a better recording.
+
 Upload errors → `400` (`{"file": ["File too large. Maximum size is 25 MB."]}`).
+AI failures never leak internals, but stay actionable:
+`{"status": "failed", "error": "AI processing failed. Please try again."}`, and a
+server without credentials returns
+`{"status": "failed", "error": "AI service not configured. Set GROQ_API_KEY in the server environment."}`.
+Quota/rate-limit, unavailable model, rejected audio format and timeout each get
+their own message; none of them is ever replaced by a fake transcript.
+`Delete` returns `204`.
 
 ### 3.4 Summaries
 

@@ -9,7 +9,12 @@ djangorestframework==3.18.3    # REST API toolkit
 django-cors-headers==4.9.0     # allow the React frontend to call the API
 python-dotenv==1.2.4           # load settings from a .env file
 Pillow==12.3.0                 # image handling (needed for image fields later)
-requests==2.34.2               # HTTP client for future AI / external calls
+requests==2.34.2               # HTTP client for AI / external calls (Groq)
+
+# --- Module 2: Audio & Transcription ---
+# mutagen is optional — used for reading audio duration metadata.
+# It degrades gracefully if not installed (duration_seconds stays null).
+mutagen==1.47.0                # audio metadata (duration)
 
 # --- Transitive dependencies (installed automatically; pinned for reproducibility) ---
 asgiref==3.12.1
