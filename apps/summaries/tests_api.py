@@ -11,7 +11,8 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from .mock_journal_entries import get_mock_journal_entry
+from apps.journal.models import JournalEntry
+
 from .models import Summary
 from .services import (
     SummaryConfigurationError,
@@ -23,7 +24,8 @@ from .services import (
 
 User = get_user_model()
 
-ENTRY_ID = 900001
+_UNSET = object()
+
 GENERATED_RESULT = {
     "summary_text": "A calm morning walk before breakfast.",
     "mood": "calm",
@@ -40,12 +42,27 @@ class SummaryAPITestCase(APITestCase):
         self.bob = User.objects.create_user(
             username="bob", password="S3cure-Passw0rd!"
         )
+        self.alice_entry = JournalEntry.objects.create(
+            user=self.alice,
+            title="Morning walk",
+            text="Walked through the park before breakfast.",
+        )
+        self.bob_entry = JournalEntry.objects.create(
+            user=self.bob,
+            title="Bob's private note",
+            text="Do not show this to Alice.",
+        )
         self.client.force_login(self.alice)
 
-    def make_summary(self, owner=None, **overrides):
+    def make_summary(self, owner=None, journal_entry=_UNSET, **overrides):
+        owner = owner or self.alice
+        if journal_entry is _UNSET:
+            journal_entry = (
+                self.alice_entry if owner.pk == self.alice.pk else self.bob_entry
+            )
         data = {
-            "owner": owner or self.alice,
-            "journal_entry_id": ENTRY_ID,
+            "owner": owner,
+            "journal_entry": journal_entry,
             "summary_text": "A calm morning walk.",
             "mood": "calm",
             "themes": ["nature", "routine"],
@@ -56,7 +73,7 @@ class SummaryAPITestCase(APITestCase):
 
     def manual_payload(self, **overrides):
         payload = {
-            "journal_entry_id": ENTRY_ID,
+            "journal_entry_id": self.alice_entry.id,
             "summary_text": "A calm morning walk.",
             "mood": "calm",
             "themes": ["nature", "routine"],
@@ -96,12 +113,25 @@ class SummaryListTests(SummaryAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         summary = Summary.objects.get(pk=response.data["id"])
         self.assertEqual(summary.owner, self.alice)
+        self.assertEqual(summary.journal_entry, self.alice_entry)
         self.assertEqual(response.data["owner"], self.alice.id)
+        self.assertEqual(response.data["journal_entry_id"], self.alice_entry.id)
+
+    def test_manual_create_rejects_another_users_entry(self):
+        response = self.client.post(
+            reverse("summaries-list"),
+            self.manual_payload(journal_entry_id=self.bob_entry.id),
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("journal_entry_id", response.data)
+        self.assertEqual(Summary.objects.count(), 0)
 
     def test_manual_create_defaults_optional_fields(self):
         response = self.client.post(
             reverse("summaries-list"),
-            {"summary_text": "A short note."},
+            {"summary_text": "A short note.", "journal_entry_id": None},
             format="json",
         )
 
@@ -122,6 +152,7 @@ class SummaryListTests(SummaryAPITestCase):
             {"summary_text": "Text", "mood": "x" * 33},
             {"summary_text": "Text", "journal_entry_id": 0},
             {"summary_text": "Text", "journal_entry_id": 2**63},
+            {"summary_text": "Text", "journal_entry_id": 999_999},
             {"summary_text": "Text", "illustration_prompt": "x" * 1_001},
         ]
 
@@ -167,6 +198,7 @@ class SummaryDetailTests(SummaryAPITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["id"], summary.id)
+        self.assertEqual(response.data["journal_entry_id"], self.alice_entry.id)
 
     def test_retrieve_other_users_summary_returns_404(self):
         summary = self.make_summary(owner=self.bob)
@@ -226,6 +258,29 @@ class SummaryDetailTests(SummaryAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         summary.refresh_from_db()
         self.assertEqual(summary.owner, self.alice)
+
+    def test_patch_cannot_link_another_users_entry(self):
+        summary = self.make_summary()
+
+        response = self.client.patch(
+            reverse("summaries-detail", args=[summary.id]),
+            {"journal_entry_id": self.bob_entry.id},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("journal_entry_id", response.data)
+        summary.refresh_from_db()
+        self.assertEqual(summary.journal_entry, self.alice_entry)
+
+    def test_deleting_the_entry_keeps_the_summary(self):
+        summary = self.make_summary()
+
+        self.alice_entry.delete()
+        summary.refresh_from_db()
+
+        self.assertIsNone(summary.journal_entry_id)
+        self.assertTrue(Summary.objects.filter(pk=summary.id).exists())
 
     def test_update_other_users_summary_returns_404(self):
         summary = self.make_summary(owner=self.bob)
@@ -287,63 +342,6 @@ class SummaryDetailTests(SummaryAPITestCase):
         generate_summary.assert_not_called()
 
 
-class MockJournalEntryEndpointTests(SummaryAPITestCase):
-    """The temporary picker endpoint must stay read-only and content-free."""
-
-    def test_route_is_module3_scoped(self):
-        self.assertEqual(
-            reverse("summaries-mock-journal-entries"),
-            "/api/summaries/mock-journal-entries/",
-        )
-
-    def test_list_requires_authentication(self):
-        self.client.logout()
-
-        response = self.client.get(reverse("summaries-mock-journal-entries"))
-
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
-    def test_list_returns_only_safe_fixture_fields(self):
-        response = self.client.get(reverse("summaries-mock-journal-entries"))
-
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(
-            [item["id"] for item in response.data],
-            [900001, 900002, 900003],
-        )
-        for item in response.data:
-            self.assertEqual(set(item.keys()), {"id", "title", "created_at"})
-            self.assertNotIn("content", item)
-            self.assertTrue(item["title"])
-        # Listing fixtures never persists summaries or journal entries.
-        self.assertEqual(Summary.objects.count(), 0)
-
-    def test_endpoint_is_read_only(self):
-        url = reverse("summaries-mock-journal-entries")
-
-        for method in ("post", "put", "patch", "delete"):
-            with self.subTest(method=method):
-                response = getattr(self.client, method)(url, {}, format="json")
-                self.assertEqual(
-                    response.status_code,
-                    status.HTTP_405_METHOD_NOT_ALLOWED,
-                )
-
-    def test_no_detail_route_can_read_an_arbitrary_mock_id(self):
-        response = self.client.get(
-            "/api/summaries/mock-journal-entries/900001/"
-        )
-
-        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
-
-    @patch("apps.summaries.views.generate_summary")
-    def test_listing_never_calls_gemini(self, generate_summary):
-        response = self.client.get(reverse("summaries-mock-journal-entries"))
-
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        generate_summary.assert_not_called()
-
-
 class SummaryGenerateTests(SummaryAPITestCase):
     def test_generate_route_is_not_swallowed_by_detail(self):
         self.assertEqual(
@@ -356,6 +354,11 @@ class SummaryGenerateTests(SummaryAPITestCase):
             status.HTTP_405_METHOD_NOT_ALLOWED,
         )
 
+    def test_legacy_mock_picker_route_is_removed(self):
+        response = self.client.get("/api/summaries/mock-journal-entries/")
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
     @patch("apps.summaries.views.generate_summary")
     def test_generate_success_saves_and_returns_the_summary(
         self, generate_summary
@@ -364,7 +367,7 @@ class SummaryGenerateTests(SummaryAPITestCase):
 
         response = self.client.post(
             reverse("summaries-generate"),
-            {"journal_entry_id": ENTRY_ID},
+            {"journal_entry_id": self.alice_entry.id},
             format="json",
         )
 
@@ -372,7 +375,8 @@ class SummaryGenerateTests(SummaryAPITestCase):
         self.assertEqual(Summary.objects.count(), 1)
         summary = Summary.objects.get()
         self.assertEqual(summary.owner, self.alice)
-        self.assertEqual(summary.journal_entry_id, ENTRY_ID)
+        self.assertEqual(summary.journal_entry, self.alice_entry)
+        self.assertEqual(summary.journal_entry_id, self.alice_entry.id)
         self.assertEqual(summary.summary_text, GENERATED_RESULT["summary_text"])
         self.assertEqual(summary.mood, GENERATED_RESULT["mood"])
         self.assertEqual(summary.themes, GENERATED_RESULT["themes"])
@@ -382,16 +386,18 @@ class SummaryGenerateTests(SummaryAPITestCase):
         )
         self.assertEqual(response.data["id"], summary.id)
         self.assertEqual(response.data["owner"], self.alice.id)
+        self.assertEqual(
+            response.data["journal_entry_id"], self.alice_entry.id
+        )
 
         generate_summary.assert_called_once()
         called_entry = generate_summary.call_args.args[0]
-        mock_entry = get_mock_journal_entry(ENTRY_ID)
-        self.assertEqual(called_entry.id, mock_entry.id)
-        self.assertEqual(called_entry.title, mock_entry.title)
-        self.assertEqual(called_entry.content, mock_entry.content)
+        self.assertEqual(called_entry.id, self.alice_entry.id)
+        self.assertEqual(called_entry.title, self.alice_entry.title)
+        self.assertEqual(called_entry.text, self.alice_entry.text)
 
     @patch("apps.summaries.views.generate_summary")
-    def test_generate_uses_provider_content_not_client_content(
+    def test_generate_uses_real_entry_not_client_content(
         self, generate_summary
     ):
         generate_summary.return_value = GENERATED_RESULT
@@ -399,9 +405,10 @@ class SummaryGenerateTests(SummaryAPITestCase):
         response = self.client.post(
             reverse("summaries-generate"),
             {
-                "journal_entry_id": ENTRY_ID,
+                "journal_entry_id": self.alice_entry.id,
                 "owner": self.bob.id,
                 "title": "Client title",
+                "text": "Client content",
                 "content": "Client content",
                 "summary_text": "Client summary",
             },
@@ -410,10 +417,9 @@ class SummaryGenerateTests(SummaryAPITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         called_entry = generate_summary.call_args.args[0]
-        mock_entry = get_mock_journal_entry(ENTRY_ID)
-        self.assertEqual(called_entry.title, mock_entry.title)
-        self.assertEqual(called_entry.content, mock_entry.content)
-        self.assertNotEqual(called_entry.content, "Client content")
+        self.assertEqual(called_entry.title, self.alice_entry.title)
+        self.assertEqual(called_entry.text, self.alice_entry.text)
+        self.assertNotEqual(called_entry.text, "Client content")
 
         summary = Summary.objects.get()
         self.assertEqual(summary.summary_text, GENERATED_RESULT["summary_text"])
@@ -421,7 +427,19 @@ class SummaryGenerateTests(SummaryAPITestCase):
         self.assertEqual(summary.owner, self.alice)
 
     @patch("apps.summaries.views.generate_summary")
-    def test_generate_unknown_mock_id_returns_404(self, generate_summary):
+    def test_generate_another_users_entry_returns_404(self, generate_summary):
+        response = self.client.post(
+            reverse("summaries-generate"),
+            {"journal_entry_id": self.bob_entry.id},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        generate_summary.assert_not_called()
+        self.assertEqual(Summary.objects.count(), 0)
+
+    @patch("apps.summaries.views.generate_summary")
+    def test_generate_unknown_id_returns_404(self, generate_summary):
         response = self.client.post(
             reverse("summaries-generate"),
             {"journal_entry_id": 123456},
@@ -429,6 +447,25 @@ class SummaryGenerateTests(SummaryAPITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        generate_summary.assert_not_called()
+        self.assertEqual(Summary.objects.count(), 0)
+
+    @patch("apps.summaries.views.generate_summary")
+    def test_generate_empty_entry_returns_400(self, generate_summary):
+        empty_entry = JournalEntry.objects.create(
+            user=self.alice,
+            title="Blank day",
+            text="   ",
+        )
+
+        response = self.client.post(
+            reverse("summaries-generate"),
+            {"journal_entry_id": empty_entry.id},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("no text", response.data["detail"])
         generate_summary.assert_not_called()
         self.assertEqual(Summary.objects.count(), 0)
 
@@ -445,13 +482,15 @@ class SummaryGenerateTests(SummaryAPITestCase):
 
     @patch("apps.summaries.views.generate_summary")
     def test_generate_invalid_id_returns_400(self, generate_summary):
-        response = self.client.post(
-            reverse("summaries-generate"),
-            {"journal_entry_id": "not-an-integer"},
-            format="json",
-        )
+        for entry_id in ("not-an-integer", 0, 2**63):
+            with self.subTest(entry_id=entry_id):
+                response = self.client.post(
+                    reverse("summaries-generate"),
+                    {"journal_entry_id": entry_id},
+                    format="json",
+                )
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         generate_summary.assert_not_called()
 
     @patch("apps.summaries.views.generate_summary")
@@ -460,7 +499,7 @@ class SummaryGenerateTests(SummaryAPITestCase):
 
         response = self.client.post(
             reverse("summaries-generate"),
-            {"journal_entry_id": ENTRY_ID},
+            {"journal_entry_id": self.alice_entry.id},
             format="json",
         )
 
@@ -475,7 +514,7 @@ class SummaryGenerateTests(SummaryAPITestCase):
 
         response = self.client.post(
             reverse("summaries-generate"),
-            {"journal_entry_id": ENTRY_ID},
+            {"journal_entry_id": self.alice_entry.id},
             format="json",
         )
 
@@ -494,7 +533,7 @@ class SummaryGenerateTests(SummaryAPITestCase):
 
         response = self.client.post(
             reverse("summaries-generate"),
-            {"journal_entry_id": ENTRY_ID},
+            {"journal_entry_id": self.alice_entry.id},
             format="json",
         )
 
@@ -514,7 +553,7 @@ class SummaryGenerateTests(SummaryAPITestCase):
 
         response = self.client.post(
             reverse("summaries-generate"),
-            {"journal_entry_id": ENTRY_ID},
+            {"journal_entry_id": self.alice_entry.id},
             format="json",
         )
 
@@ -530,7 +569,7 @@ class SummaryGenerateTests(SummaryAPITestCase):
 
         response = self.client.post(
             reverse("summaries-generate"),
-            {"journal_entry_id": ENTRY_ID},
+            {"journal_entry_id": self.alice_entry.id},
             format="json",
         )
 
@@ -538,21 +577,18 @@ class SummaryGenerateTests(SummaryAPITestCase):
         self.assertEqual(Summary.objects.count(), 0)
 
     @patch("apps.summaries.views.generate_summary")
-    def test_generate_input_error_returns_500(self, generate_summary):
+    def test_generate_input_error_returns_400(self, generate_summary):
         generate_summary.side_effect = SummaryInputError(
             "Journal entry content cannot be empty."
         )
 
         response = self.client.post(
             reverse("summaries-generate"),
-            {"journal_entry_id": ENTRY_ID},
+            {"journal_entry_id": self.alice_entry.id},
             format="json",
         )
 
-        self.assertEqual(
-            response.status_code,
-            status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(Summary.objects.count(), 0)
 
     @patch("apps.summaries.views.generate_summary")
@@ -562,7 +598,7 @@ class SummaryGenerateTests(SummaryAPITestCase):
         with patch.object(Summary, "save", side_effect=RuntimeError("save failed")):
             response = self.client.post(
                 reverse("summaries-generate"),
-                {"journal_entry_id": ENTRY_ID},
+                {"journal_entry_id": self.alice_entry.id},
                 format="json",
             )
 

@@ -17,11 +17,7 @@ from rest_framework.views import APIView
 
 from .journal_provider import JournalEntryNotFound, journal_provider
 from .models import Summary
-from .serializers import (
-    GenerateSummarySerializer,
-    MockJournalEntrySerializer,
-    SummarySerializer,
-)
+from .serializers import GenerateSummarySerializer, SummarySerializer
 from .services import (
     SummaryConfigurationError,
     SummaryInputError,
@@ -41,11 +37,16 @@ class SummaryListCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        summaries = Summary.objects.filter(owner=request.user)
+        summaries = Summary.objects.filter(owner=request.user).select_related(
+            "journal_entry"
+        )
         return Response(SummarySerializer(summaries, many=True).data)
 
     def post(self, request):
-        serializer = SummarySerializer(data=request.data)
+        serializer = SummarySerializer(
+            data=request.data,
+            context={"request": request},
+        )
         serializer.is_valid(raise_exception=True)
         serializer.save(owner=request.user)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -57,7 +58,8 @@ class SummaryDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get_object(self, request, pk):
-        return get_object_or_404(Summary, pk=pk, owner=request.user)
+        summaries = Summary.objects.select_related("journal_entry")
+        return get_object_or_404(summaries, pk=pk, owner=request.user)
 
     def get(self, request, pk):
         summary = self.get_object(request, pk)
@@ -75,6 +77,7 @@ class SummaryDetailView(APIView):
             summary,
             data=request.data,
             partial=partial,
+            context={"request": request},
         )
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -86,27 +89,12 @@ class SummaryDetailView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class MockJournalEntryListView(APIView):
-    """Read-only list of temporary Module 3 journal-entry choices.
-
-    This is a development seam, not a journal API: entries are not stored in
-    SQLite and cannot be created, edited, or deleted here. Only the safe
-    picker fields are returned; generation resolves the full fixture by ID.
-    """
-
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        entries = journal_provider.list_entries(request.user)
-        return Response(MockJournalEntrySerializer(entries, many=True).data)
-
-
 class SummaryGenerateView(APIView):
-    """Generate a summary from an isolated mock journal entry.
+    """Generate a summary from one of the caller's journal entries.
 
     The client supplies only ``journal_entry_id``. Journal content always
-    comes from the journal provider (temporarily the mock fixtures), never
-    from the request body.
+    comes from Module 1, never from the request body, and ownership is
+    enforced by the provider's ``user`` filter.
     """
 
     permission_classes = [IsAuthenticated]
@@ -120,8 +108,14 @@ class SummaryGenerateView(APIView):
             entry = journal_provider.get_entry(request.user, entry_id)
         except JournalEntryNotFound:
             return Response(
-                {"detail": "Mock journal entry not found."},
+                {"detail": "Journal entry not found."},
                 status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not entry.text.strip():
+            return Response(
+                {"detail": "This journal entry has no text to summarize."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         try:
@@ -151,10 +145,10 @@ class SummaryGenerateView(APIView):
                 status=status.HTTP_502_BAD_GATEWAY,
             )
         except SummaryInputError:
-            logger.error("Summary input was rejected.")
+            logger.warning("Summary input was rejected.")
             return Response(
                 {"detail": "The journal entry could not be summarized."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                status=status.HTTP_400_BAD_REQUEST,
             )
         except SummaryServiceError:
             logger.error("Summary generation failed.")
@@ -174,7 +168,7 @@ class SummaryGenerateView(APIView):
 
         summary = Summary(
             owner=request.user,
-            journal_entry_id=entry.id,
+            journal_entry=entry,
             **result,
         )
         try:

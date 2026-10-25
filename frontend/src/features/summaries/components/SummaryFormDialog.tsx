@@ -159,7 +159,7 @@ export function SummaryFormDialog({ mode, summary, onClose, onSaved }: SummaryFo
 
         <FormField
           label="Journal entry ID"
-          hint="Optional temporary reference until Module 1 is integrated."
+          hint="Optional link to one of your journal entries."
           error={errors.fieldErrors.journal_entry_id?.[0]}
         >
           {(field) => (

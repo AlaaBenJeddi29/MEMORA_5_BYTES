@@ -5,8 +5,9 @@ import { Button } from '../../../components/Button'
 import { FormField } from '../../../components/FormField'
 import { LoadingState } from '../../../components/LoadingState'
 import { normalizeApiError, type NormalizedErrors } from '../../../services/errors'
+import { journalApi } from '../../../services/journal'
 import { summariesApi } from '../../../services/summaries'
-import type { MockJournalEntryOption } from '../../../types/summaries'
+import type { JournalEntry } from '../../../types/journal'
 import { formatDateTime } from '../../../utils/format'
 import { Dialog } from './Dialog'
 
@@ -27,7 +28,7 @@ function messagesOf(errors: NormalizedErrors | null): string[] {
 }
 
 export function GenerateSummaryDialog({ onClose, onGenerated }: GenerateSummaryDialogProps) {
-  const [entries, setEntries] = useState<MockJournalEntryOption[]>([])
+  const [entries, setEntries] = useState<JournalEntry[]>([])
   const [entriesStatus, setEntriesStatus] = useState<EntryLoadStatus>('loading')
   const [entriesErrors, setEntriesErrors] = useState<NormalizedErrors | null>(null)
   const [entryId, setEntryId] = useState('')
@@ -41,7 +42,7 @@ export function GenerateSummaryDialog({ onClose, onGenerated }: GenerateSummaryD
     setEntriesStatus('loading')
     setEntriesErrors(null)
     try {
-      const items = await summariesApi.listMockJournalEntries()
+      const items = await journalApi.listAll()
       setEntries(items)
       setEntriesStatus('ready')
     } catch (error) {
@@ -95,12 +96,6 @@ export function GenerateSummaryDialog({ onClose, onGenerated }: GenerateSummaryD
         </Alert>
       )}
 
-      <Alert variant="info" title="Temporary Module 3 entries">
-        This list comes from <code>GET /api/summaries/mock-journal-entries/</code>. It
-        stands in for Module 1 until real journal entries are available. Only the
-        selected entry ID is sent back.
-      </Alert>
-
       {entriesStatus === 'loading' && (
         <LoadingState label="Loading journal entries…" />
       )}
@@ -121,8 +116,8 @@ export function GenerateSummaryDialog({ onClose, onGenerated }: GenerateSummaryD
       )}
 
       {entriesStatus === 'ready' && entries.length === 0 && (
-        <Alert variant="warning" title="No mock entries available">
-          The server has no development journal entries to summarize right now.
+        <Alert variant="warning" title="No journal entries yet">
+          Write a journal entry first, then come back to summarize it.
         </Alert>
       )}
 
@@ -131,7 +126,7 @@ export function GenerateSummaryDialog({ onClose, onGenerated }: GenerateSummaryD
           <FormField
             label="Journal entry"
             required
-            hint="Generation runs on the server and can take a few seconds."
+            hint="Only your own entries are shown. Generation runs on the server and can take a few seconds."
             error={errors?.fieldErrors.journal_entry_id?.[0]}
           >
             {(field) => (

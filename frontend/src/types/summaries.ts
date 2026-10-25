@@ -20,17 +20,7 @@ export interface SummaryInput {
   illustration_prompt: string
 }
 
-/** Generation accepts only a journal entry ID; content stays server-side. */
+/** Generation accepts only a Module 1 journal entry ID; content stays server-side. */
 export interface GenerateSummaryInput {
   journal_entry_id: number
-}
-
-/**
- * Safe picker shape from GET /api/summaries/mock-journal-entries/.
- * Temporary Module 3 fixtures; no journal content is returned.
- */
-export interface MockJournalEntryOption {
-  id: number
-  title: string
-  created_at: string
 }

@@ -22,7 +22,7 @@ describe('summaryForm', () => {
       mood: ' calm ',
       themes: 'work, rest, ,focus',
       illustration_prompt: ' A lamp on a desk. ',
-      journal_entry_id: ' 900001 ',
+      journal_entry_id: ' 1 ',
     })
 
     expect(result.errors).toEqual({})
@@ -31,7 +31,7 @@ describe('summaryForm', () => {
       mood: 'calm',
       themes: ['work', 'rest', 'focus'],
       illustration_prompt: 'A lamp on a desk.',
-      journal_entry_id: 900001,
+      journal_entry_id: 1,
     })
   })
 
@@ -54,7 +54,7 @@ describe('summaryForm', () => {
     const summary: Summary = {
       id: 3,
       owner: 1,
-      journal_entry_id: 900003,
+      journal_entry_id: 2,
       summary_text: 'Dinner with family.',
       mood: 'grateful',
       themes: ['family', 'food'],
@@ -68,7 +68,7 @@ describe('summaryForm', () => {
       mood: 'grateful',
       themes: 'family, food',
       illustration_prompt: 'A warm table.',
-      journal_entry_id: '900003',
+      journal_entry_id: '2',
     })
     expect(parseThemes('family, food')).toEqual(['family', 'food'])
   })

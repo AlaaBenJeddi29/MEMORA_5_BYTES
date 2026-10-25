@@ -1,33 +1,19 @@
 """Journal-entry provider seam for summaries generation.
 
-Module 3 must not depend on Module 1's journal-entry model until its model/API
-contract and migrations are agreed. This module is the **only** place that
-resolves a journal entry for summaries, so the temporary fixtures can be
-replaced without touching the views or the Gemini service.
+Module 1's ``journal.JournalEntry`` model is the single source of truth for
+journal entries. This module is the only place where Module 3 resolves an
+entry, so the views stay independent of how the entry is stored.
 
-Replacement point (when Module 1 is ready)
-------------------------------------------
-1. Agree the ``JournalEntry`` model + API contract and ship its migrations.
-2. Implement a provider with the same ``JournalEntryProvider`` interface below.
-   It must filter by ``user`` and only expose that user's entries.
-3. Replace the ``journal_provider`` singleton at the bottom of this module.
-
-Nothing else in Module 3 should change. Do **not** add a ``JournalEntry``
-foreign key before step 1. The mock implementation is development-only: it
-reads only the fixed fixture IDs 900001-900003, never the database, and cannot
-be used to read arbitrary IDs.
+Both provider methods filter by ``user``. A caller who does not own an entry
+gets ``JournalEntryNotFound`` (reported as 404 by the API), never another
+user's content.
 """
 
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Protocol
 
-from .mock_journal_entries import (
-    MOCK_JOURNAL_ENTRIES,
-    MockJournalEntry,
-    MockJournalEntryNotFound,
-    get_mock_journal_entry,
-)
+from apps.journal.models import JournalEntry
 
 
 class JournalEntryNotFound(LookupError):
@@ -44,48 +30,52 @@ class JournalEntryOption:
 
 
 class JournalEntryLike(Protocol):
-    """Minimal shape the generation service needs from a journal entry."""
+    """Minimal shape the generation service needs from a journal entry.
+
+    Module 1 stores the body in ``text``; the Gemini service normalizes that
+    field into its own ``content`` input.
+    """
 
     id: int
     title: str
-    content: str
+    text: str
     created_at: datetime
 
 
 class JournalEntryProvider(Protocol):
-    """Interface every journal-entry source must implement.
-
-    ``user`` is part of the interface so a real provider can enforce
-    ownership. The mock provider accepts and ignores it because its fixtures
-    are development-only and are not persisted or owned.
-    """
+    """Interface for the journal-entry source used by summaries."""
 
     def list_entries(self, user: Any) -> tuple[JournalEntryOption, ...]: ...
 
     def get_entry(self, user: Any, entry_id: int) -> JournalEntryLike: ...
 
 
-class MockJournalProvider:
-    """Temporary Module 3 fixtures; see the replacement steps above."""
+class OrmJournalProvider:
+    """Resolve journal entries directly from Module 1 via the Django ORM."""
 
     def list_entries(self, user: Any) -> tuple[JournalEntryOption, ...]:
+        entries = JournalEntry.objects.filter(user=user).only(
+            "id", "title", "created_at"
+        )
         return tuple(
             JournalEntryOption(
                 id=entry.id,
                 title=entry.title,
                 created_at=entry.created_at,
             )
-            for entry in MOCK_JOURNAL_ENTRIES
+            for entry in entries
         )
 
-    def get_entry(self, user: Any, entry_id: int) -> MockJournalEntry:
+    def get_entry(self, user: Any, entry_id: int) -> JournalEntry:
         try:
-            return get_mock_journal_entry(entry_id)
-        except MockJournalEntryNotFound as exc:
-            # Only the fixed fixture IDs resolve; arbitrary IDs are rejected.
+            return JournalEntry.objects.get(pk=entry_id, user=user)
+        except (
+            JournalEntry.DoesNotExist,
+            TypeError,
+            ValueError,
+            OverflowError,
+        ) as exc:
             raise JournalEntryNotFound("Journal entry not found.") from exc
 
 
-# Single switch point for Module 1. Replace this instance once the real
-# JournalEntry model/API contract and migrations exist.
-journal_provider: JournalEntryProvider = MockJournalProvider()
+journal_provider: JournalEntryProvider = OrmJournalProvider()

@@ -33,9 +33,10 @@ def validate_themes(value):
 class Summary(models.Model):
     """AI-generated recap for a single journal entry.
 
-    ``journal_entry_id`` is deliberately a temporary integer reference, not a
-    ForeignKey. Module 1 owns ``JournalEntry``; the relation will be replaced by
-    a real FK only after its model contract is agreed.
+    The source entry lives in Module 1 (``journal.JournalEntry``). The column
+    keeps its historical name ``journal_entry_id`` so existing summaries and
+    API payloads remain compatible. Deleting an entry keeps the summary and
+    clears the link, which preserves user-authored recap content.
     """
 
     owner = models.ForeignKey(
@@ -43,14 +44,14 @@ class Summary(models.Model):
         on_delete=models.CASCADE,
         related_name="summaries",
     )
-    journal_entry_id = models.PositiveBigIntegerField(
+    journal_entry = models.ForeignKey(
+        "journal.JournalEntry",
         null=True,
         blank=True,
         db_index=True,
-        help_text=(
-            "Temporary integer reference to the source journal entry. "
-            "Replaced by a ForeignKey once Module 1's contract is agreed."
-        ),
+        db_column="journal_entry_id",
+        on_delete=models.SET_NULL,
+        related_name="summaries",
     )
     summary_text = models.TextField()
     mood = models.CharField(max_length=32, blank=True, default="")

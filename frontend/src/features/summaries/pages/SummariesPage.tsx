@@ -156,7 +156,7 @@ export function SummariesPage() {
             {summaries.length === 0 ? (
               <EmptyState
                 title="No summaries yet"
-                description="Generate a recap from a mock journal entry, or write one by hand."
+                description="Generate a recap from one of your journal entries, or write one by hand."
                 actions={
                   <>
                     <Button onClick={() => openDialog({ kind: 'generate' })}>
