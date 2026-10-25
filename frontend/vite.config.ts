@@ -1,24 +1,32 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// The backend CORS allowlist is configured for port 3000, so the dev server
-// must run there and must fail loudly if the port is already taken.
+const BACKEND_URL = 'http://127.0.0.1:8000'
+
+// Route API and media requests through the dev server so the browser sees one
+// origin. That keeps session and CSRF cookies first-party and avoids
+// cross-site cookie handling. The original Host header is preserved so
+// Django's CSRF Origin check can match.
+const devProxy = {
+  '/api': {
+    target: BACKEND_URL,
+  },
+  '/media': {
+    target: BACKEND_URL,
+  },
+}
+
+// The dev server must stay on port 3000 and fail loudly if it is taken.
 export default defineConfig({
   plugins: [react()],
   server: {
     port: 3000,
     strictPort: true,
-    // Same-origin proxy in dev: the session and CSRF cookies stay readable by
-    // the app. Requires VITE_API_BASE_URL= (empty) so requests use this origin.
-    // changeOrigin is intentionally left false: Django compares the request
-    // Origin with its Host, which must both be localhost:3000.
-    proxy: {
-      '/api': { target: 'http://127.0.0.1:8000' },
-      '/media': { target: 'http://127.0.0.1:8000' },
-    },
+    proxy: devProxy,
   },
   preview: {
     port: 3000,
     strictPort: true,
+    proxy: devProxy,
   },
 })

@@ -39,5 +39,8 @@ urlpatterns = [
 
 # While DEBUG = True, let Django serve uploaded media files during
 # development. In production a real web server or cloud storage does this.
+# WARNING: this development route is NOT authenticated. Media URLs are
+# unguessable capability URLs, not owner-scoped access control; see
+# docs/API_CONTRACT.md §3.5 and §4.11 before exposing media elsewhere.
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

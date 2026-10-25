@@ -7,10 +7,10 @@ async function loadApiBaseUrl(): Promise<string> {
 }
 
 describe('apiBaseUrl', () => {
-  it('defaults to the local backend when unset', async () => {
+  it('defaults to same-origin when unset', async () => {
     vi.stubEnv('VITE_API_BASE_URL', undefined)
 
-    expect(await loadApiBaseUrl()).toBe('http://127.0.0.1:8000')
+    expect(await loadApiBaseUrl()).toBe('')
   })
 
   it('treats an explicit empty value as same-origin', async () => {

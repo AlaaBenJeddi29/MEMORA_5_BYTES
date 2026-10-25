@@ -12,20 +12,15 @@ dependencies, and no custom user model.
     GET    /api/accounts/users/        -> list users (staff only)
     PATCH  /api/accounts/users/<pk>/   -> edit a user (staff only)
     DELETE /api/accounts/users/<pk>/   -> delete a user (staff only)
+    POST /api/accounts/register/  -> create a user and start a session (public)
+    POST /api/accounts/login/     -> start a session (public)
+    POST /api/accounts/logout/    -> end the session (authenticated)
+    GET  /api/accounts/me/        -> the session user, or 204 when signed out
+    GET  /api/accounts/csrf/      -> ensure the CSRF cookie is set (public)
 
-CSRF + React note
------------------
-While authenticated, any unsafe request (POST/PUT/PATCH/DELETE) must echo the
-``csrftoken`` cookie back in the ``X-CSRFToken`` header and be sent with
-credentials (``fetch(url, { credentials: "include" })``). The SPA can call
-``GET /api/accounts/csrf/`` first to make sure that cookie exists (Django
-keeps ``CSRF_COOKIE_HTTPONLY = False`` by default so JavaScript can read it).
-Login and register are anonymous requests, so DRF does not enforce CSRF on
-them.
-
-The simplest development setup is a dev-server proxy so the React app and the
-API share an origin; then the session cookie is sent automatically and no
-cross-origin CSRF configuration is needed.
+While authenticated, unsafe requests must echo the ``csrftoken`` cookie in
+``X-CSRFToken``. The Vite dev proxy keeps the SPA and the API on one origin, so
+session and CSRF cookies stay first-party.
 """
 
 from django.contrib.auth import get_user_model
@@ -51,7 +46,11 @@ User = get_user_model()
 
 
 class RegisterView(APIView):
-    """Create a new user account. Open to anyone; cannot set privileges."""
+    """Create a new user account and start a session.
+
+    Open to anyone; cannot set privileges. Starting the session here matches
+    the SPA, which navigates straight to the app after a successful signup.
+    """
 
     permission_classes = [AllowAny]
 
@@ -60,6 +59,8 @@ class RegisterView(APIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
         # Log the new user in so the SPA is authenticated right after signup.
+        # Log the user in right away so the session cookie is set,
+        # exactly like LoginView does — no separate login step needed.
         auth_login(request, user)
         return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
 
@@ -87,15 +88,18 @@ class LogoutView(APIView):
 
 
 class MeView(APIView):
-    """Return the authenticated user's own data.
+    """Return the session's user, or 204 when there is no session.
 
     There is intentionally no id argument, so a user can never read or
-    modify another user's account through this endpoint.
+    modify another user's account through this endpoint. Returning 204 for an
+    anonymous session lets the SPA probe auth state without a console error.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def get(self, request):
+        if not request.user.is_authenticated:
+            return Response(status=status.HTTP_204_NO_CONTENT)
         return Response(UserSerializer(request.user).data)
 
 
