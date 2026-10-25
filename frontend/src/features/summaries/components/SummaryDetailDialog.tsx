@@ -8,15 +8,32 @@ export interface SummaryDetailDialogProps {
   onClose: () => void
 }
 
+function mediaLibraryHref(summary: Summary): string {
+  const params = new URLSearchParams({ summary_id: String(summary.id) })
+  if (summary.journal_entry_id !== null) {
+    params.set('journal_entry_id', String(summary.journal_entry_id))
+  }
+  return `/app/media?${params.toString()}`
+}
+
 export function SummaryDetailDialog({ summary, onClose }: SummaryDetailDialogProps) {
+  const canIllustrate = Boolean(summary.illustration_prompt.trim())
+
   return (
     <Dialog
       title={`Summary ${summary.id}`}
       onClose={onClose}
       footer={
-        <Button variant="secondary" onClick={onClose}>
-          Close
-        </Button>
+        <>
+          {canIllustrate && (
+            <a className="btn" href={mediaLibraryHref(summary)}>
+              Generate illustration
+            </a>
+          )}
+          <Button variant="secondary" onClick={onClose}>
+            Close
+          </Button>
+        </>
       }
     >
       <dl className="detail-list summary-detail">
@@ -65,10 +82,13 @@ export function SummaryDetailDialog({ summary, onClose }: SummaryDetailDialogPro
         <div className="detail-list__row">
           <dt>Illustration prompt</dt>
           <dd>
-            {summary.illustration_prompt ? (
+            {canIllustrate ? (
               <p className="summary-detail__prompt">{summary.illustration_prompt}</p>
             ) : (
-              <span className="muted">Not set</span>
+              <span className="muted">
+                Not set. Add an illustration prompt in the summary editor to
+                enable illustration generation.
+              </span>
             )}
           </dd>
         </div>

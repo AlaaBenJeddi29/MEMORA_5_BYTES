@@ -1,28 +1,14 @@
 """Session-based authentication views for the accounts app.
 
-These endpoints match the project's existing REST_FRAMEWORK configuration
-(``SessionAuthentication`` + ``IsAuthenticated``). No tokens, no extra
-dependencies, and no custom user model.
-
-    POST /api/accounts/register/  -> create a user (public)
+    POST /api/accounts/register/  -> create a user and start a session (public)
     POST /api/accounts/login/     -> start a session (public)
     POST /api/accounts/logout/    -> end the session (authenticated)
-    GET  /api/accounts/me/        -> the authenticated user only (authenticated)
+    GET  /api/accounts/me/        -> the session user, or 204 when signed out
     GET  /api/accounts/csrf/      -> ensure the CSRF cookie is set (public)
 
-CSRF + React note
------------------
-While authenticated, any unsafe request (POST/PUT/PATCH/DELETE) must echo the
-``csrftoken`` cookie back in the ``X-CSRFToken`` header and be sent with
-credentials (``fetch(url, { credentials: "include" })``). The SPA can call
-``GET /api/accounts/csrf/`` first to make sure that cookie exists (Django
-keeps ``CSRF_COOKIE_HTTPONLY = False`` by default so JavaScript can read it).
-Login and register are anonymous requests, so DRF does not enforce CSRF on
-them.
-
-The simplest development setup is a dev-server proxy so the React app and the
-API share an origin; then the session cookie is sent automatically and no
-cross-origin CSRF configuration is needed.
+While authenticated, unsafe requests must echo the ``csrftoken`` cookie in
+``X-CSRFToken``. The Vite dev proxy keeps the SPA and the API on one origin, so
+session and CSRF cookies stay first-party.
 """
 
 from django.contrib.auth import login as auth_login
@@ -43,7 +29,6 @@ class RegisterView(APIView):
     Open to anyone; cannot set privileges. Starting the session here matches
     the SPA, which navigates straight to the app after a successful signup.
     """
-    """Create a new user account and immediately start a session."""
 
     permission_classes = [AllowAny]
 

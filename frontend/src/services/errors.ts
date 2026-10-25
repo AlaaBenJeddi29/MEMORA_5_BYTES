@@ -51,7 +51,12 @@ function isNetworkError(error: unknown): boolean {
 
 function fromBody(data: unknown, status: number): NormalizedErrors {
   if (typeof data === 'string' && data.trim()) {
-    return { fieldErrors: {}, formErrors: [data] }
+    // Proxies and debug pages can return HTML or plain text for 5xx responses.
+    // Never render that raw body; it may contain internal implementation details.
+    return {
+      fieldErrors: {},
+      formErrors: [status >= 500 ? defaultMessage(status) : data],
+    }
   }
 
   if (Array.isArray(data)) {

@@ -1,6 +1,4 @@
-
-"""
-Django settings for the MEMORA project.
+"""Django settings for the MEMORA project.
 
 MEMORA is a private, personal multimodal journal (text, audio, images,
 people) built as a university Django project.
@@ -15,6 +13,7 @@ Docs: https://docs.djangoproject.com/en/5.2/ref/settings/
 import os
 from pathlib import Path
 
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 
@@ -46,6 +45,28 @@ def env_list(name, default=""):
         for item in os.environ.get(name, default).split(",")
         if item.strip()
     ]
+
+
+def env_generation_sizes(name, default):
+    """Read ``WIDTHxHEIGHT`` pairs used by the local generation workflow."""
+    sizes = []
+    for item in env_list(name, default):
+        try:
+            width_text, height_text = item.lower().split("x", 1)
+            width, height = int(width_text), int(height_text)
+        except ValueError as exc:
+            raise ImproperlyConfigured(
+                f"{name} must contain WIDTHxHEIGHT pairs, e.g. 512x512."
+            ) from exc
+        if width <= 0 or height <= 0 or width % 64 or height % 64:
+            raise ImproperlyConfigured(
+                f"{name} sizes must be positive multiples of 64."
+            )
+        if (width, height) not in sizes:
+            sizes.append((width, height))
+    if not sizes:
+        raise ImproperlyConfigured(f"{name} must contain at least one size.")
+    return tuple(sizes)
 
 
 def env_int(name, default):
@@ -227,6 +248,52 @@ MEDIA_URL = "media/"
 
 MEDIA_ROOT = BASE_DIR / "media"
 
+# Maximum accepted image upload size (bytes) and decoded pixel count.
+MEDIA_IMAGE_MAX_BYTES = int(os.environ.get("MEDIA_IMAGE_MAX_BYTES", 10 * 1024 * 1024))
+MEDIA_IMAGE_MAX_PIXELS = int(os.environ.get("MEDIA_IMAGE_MAX_PIXELS", 40_000_000))
+
+
+# Local ComfyUI image generation. The Django backend is the only component
+# that talks to ComfyUI; the browser never receives this URL or workflow.
+COMFYUI_BASE_URL = os.environ.get(
+    "COMFYUI_BASE_URL", "http://127.0.0.1:8188"
+).strip()
+COMFYUI_WORKFLOW_PATH = os.environ.get(
+    "COMFYUI_WORKFLOW_PATH",
+    str(BASE_DIR / "apps/media_library/workflows/stable_diffusion_1_5_text_to_image.json"),
+).strip()
+COMFYUI_CHECKPOINT = os.environ.get("COMFYUI_CHECKPOINT", "").strip()
+COMFYUI_TIMEOUT = float(os.environ.get("COMFYUI_TIMEOUT", "180"))
+COMFYUI_REQUEST_TIMEOUT = float(os.environ.get("COMFYUI_REQUEST_TIMEOUT", "15"))
+
+# Server-side generation guardrails.
+MEDIA_GENERATION_MAX_PROMPT_LENGTH = int(
+    os.environ.get("MEDIA_GENERATION_MAX_PROMPT_LENGTH", "1000")
+)
+MEDIA_GENERATION_ALLOWED_SIZES = env_generation_sizes(
+    "MEDIA_GENERATION_ALLOWED_SIZES",
+    "512x512,512x768,768x512",
+)
+MEDIA_GENERATION_MIN_STEPS = int(os.environ.get("MEDIA_GENERATION_MIN_STEPS", "1"))
+MEDIA_GENERATION_MAX_STEPS = int(os.environ.get("MEDIA_GENERATION_MAX_STEPS", "30"))
+MEDIA_GENERATION_DEFAULT_STEPS = int(
+    os.environ.get("MEDIA_GENERATION_DEFAULT_STEPS", "20")
+)
+if (
+    MEDIA_GENERATION_MAX_PROMPT_LENGTH < 1
+    or MEDIA_GENERATION_MIN_STEPS < 1
+    or MEDIA_GENERATION_MAX_STEPS < MEDIA_GENERATION_MIN_STEPS
+    or not (
+        MEDIA_GENERATION_MIN_STEPS
+        <= MEDIA_GENERATION_DEFAULT_STEPS
+        <= MEDIA_GENERATION_MAX_STEPS
+    )
+):
+    raise ImproperlyConfigured(
+        "Generation prompt or step limits are invalid. Check the "
+        "MEDIA_GENERATION_* environment variables."
+    )
+
 
 # ============================================================
 # DEFAULT PRIMARY KEY
@@ -253,9 +320,6 @@ REST_FRAMEWORK = {
 # CORS — REACT / VITE FRONTEND
 # ============================================================
 
-# Allowed frontend development origins.
-# Common ports: 3000, 3001, and Vite's default 5173.
-
 CORS_ALLOWED_ORIGINS = env_list(
     "DJANGO_CORS_ALLOWED_ORIGINS",
     (
@@ -268,7 +332,6 @@ CORS_ALLOWED_ORIGINS = env_list(
     ),
 )
 
-# Allow cookies and session credentials in cross-origin requests.
 CORS_ALLOW_CREDENTIALS = True
 
 
@@ -276,7 +339,6 @@ CORS_ALLOW_CREDENTIALS = True
 # SESSION COOKIE SETTINGS
 # ============================================================
 
-# Appropriate for local HTTP development.
 SESSION_COOKIE_SAMESITE = "Lax"
 SESSION_COOKIE_SECURE = False
 SESSION_COOKIE_HTTPONLY = True
@@ -286,8 +348,6 @@ SESSION_COOKIE_HTTPONLY = True
 # CSRF COOKIE SETTINGS
 # ============================================================
 
-# JavaScript may read the CSRF cookie so the frontend can send
-# its value in the X-CSRFToken request header.
 CSRF_COOKIE_HTTPONLY = False
 CSRF_COOKIE_SAMESITE = "Lax"
 CSRF_COOKIE_SECURE = False
@@ -297,7 +357,6 @@ CSRF_COOKIE_SECURE = False
 # CSRF TRUSTED ORIGINS
 # ============================================================
 
-# Keep these origins synchronized with the frontend's actual origin.
 CSRF_TRUSTED_ORIGINS = env_list(
     "DJANGO_CSRF_TRUSTED_ORIGINS",
     (
@@ -314,10 +373,6 @@ CSRF_TRUSTED_ORIGINS = env_list(
 # ============================================================
 # GOOGLE GEMINI CONFIGURATION
 # ============================================================
-
-# Used by apps.summaries.services.gemini.
-# Keep the API key on the backend. Never expose it to React
-# or commit the real key to Git.
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 

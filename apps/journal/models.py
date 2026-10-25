@@ -18,7 +18,8 @@ class JournalEntry(models.Model):
     sentiment = models.CharField(max_length=100, blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
     photos = models.ManyToManyField(
-        'media_library.Photo',
+        #alaa changed this line to fix the error
+        'media_library.MediaFile',
         blank=True,
         related_name='journal_entries',
     )

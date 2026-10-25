@@ -91,6 +91,55 @@ describe('SummariesPage', () => {
     expect(screen.getByText('rest')).toBeTruthy()
   })
 
+  it('links a summary with an illustration prompt to the media library', async () => {
+    installFetch(({ url }) => {
+      if (url.endsWith('/api/summaries/')) {
+        return jsonResponse([SUMMARY])
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    render(<SummariesPage />)
+    await screen.findByText(SUMMARY.summary_text)
+
+    fireEvent.click(screen.getByRole('button', { name: 'View summary 1' }))
+    const dialog = await screen.findByRole('dialog')
+    const link = within(dialog).getByRole('link', {
+      name: 'Generate illustration',
+    })
+
+    expect(link.getAttribute('href')).toBe(
+      '/app/media?summary_id=1&journal_entry_id=2',
+    )
+  })
+
+  it('does not offer illustration generation without an illustration prompt', async () => {
+    const withoutPrompt: Summary = {
+      ...SUMMARY,
+      id: 8,
+      illustration_prompt: '',
+    }
+    installFetch(({ url }) => {
+      if (url.endsWith('/api/summaries/')) {
+        return jsonResponse([withoutPrompt])
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    render(<SummariesPage />)
+    await screen.findByText(withoutPrompt.summary_text)
+
+    fireEvent.click(screen.getByRole('button', { name: 'View summary 8' }))
+    const dialog = await screen.findByRole('dialog')
+
+    expect(
+      within(dialog).queryByRole('link', { name: 'Generate illustration' }),
+    ).toBeNull()
+    expect(
+      within(dialog).getByText(/Add an illustration prompt in the summary editor/i),
+    ).toBeTruthy()
+  })
+
   it('shows an empty state when there are no summaries', async () => {
     installFetch(() => jsonResponse([]))
 

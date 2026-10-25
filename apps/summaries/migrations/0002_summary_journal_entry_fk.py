@@ -17,7 +17,7 @@ def clear_untrusted_references(apps, schema_editor):
 
     for summary in Summary.objects.exclude(journal_entry=None).iterator():
         owned = JournalEntry.objects.filter(
-            pk=summary.journal_entry,
+            pk=summary.journal_entry_id,
             user_id=summary.owner_id,
         ).exists()
         if not owned:
