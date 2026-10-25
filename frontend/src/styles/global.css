@@ -1360,3 +1360,399 @@ a.app-user__link:hover {
     scroll-behavior: auto !important;
   }
 }
+
+/* ------------------------------------------------------------------ *
+ * Audio feature styles
+ * ------------------------------------------------------------------ */
+
+/* Page layout */
+.audio-page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--space-6, 1.5rem);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8, 2rem);
+}
+
+.audio-page__section-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 0.75rem;
+}
+
+.audio-page__upload-hint {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+}
+
+.audio-page__entries {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.audio-page__transcript-banner blockquote {
+  margin: 0.5rem 0;
+  padding: 0.5rem 1rem;
+  border-left: 3px solid var(--success);
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+/* Voice recorder */
+.voice-recorder {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.voice-recorder__recording {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: var(--danger);
+}
+
+.voice-recorder__dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--danger);
+  animation: blink 1s step-start infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.2; }
+}
+
+.voice-recorder__time {
+  font-variant-numeric: tabular-nums;
+  font-size: 1.1rem;
+}
+
+.voice-recorder__controls {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.voice-recorder__audio {
+  width: 100%;
+}
+
+/* Recorder opened inside a memo card: lighter than the page-level one. */
+.voice-recorder--replace {
+  padding: var(--space-3);
+  border-style: dashed;
+  background: var(--surface-muted);
+  gap: var(--space-2);
+}
+
+.audio-card__replace-note {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+/* Live AI analysis status shown under the recorder */
+.voice-recorder__status {
+  margin: 0.75rem 0 0;
+  padding: 0.6rem 0.85rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  border: 1px solid var(--border);
+  background: var(--surface-muted);
+  color: var(--text);
+}
+
+.voice-recorder__status--uploading,
+.voice-recorder__status--queued,
+.voice-recorder__status--processing {
+  border-color: var(--primary-soft);
+  background: var(--primary-soft);
+  color: var(--primary-strong);
+}
+
+.voice-recorder__status--succeeded {
+  border-color: var(--success-border);
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.voice-recorder__status--failed {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.voice-recorder__status-detail {
+  font-weight: 600;
+}
+
+/* Audio entry card */
+.audio-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.audio-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.audio-card__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.audio-card__date {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.audio-card__duration {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.audio-card__audio {
+  width: 100%;
+}
+
+/* AI result rows (language, sentiment) */
+.audio-card__results {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.audio-card__result-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: 8px;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+}
+
+.audio-card__result-icon {
+  font-size: 1.3rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.audio-card__result-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: 0.1rem;
+}
+
+.audio-card__result-value {
+  display: inline;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-right: 0.4rem;
+}
+
+.audio-card__result-badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-weight: 600;
+}
+
+/* Sentiment color variants */
+.audio-card__result-row--positive {
+  border-color: var(--success-border);
+  background: var(--success-bg);
+}
+.audio-card__result-row--positive .audio-card__result-value { color: var(--success); }
+
+.audio-card__result-row--negative {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+}
+.audio-card__result-row--negative .audio-card__result-value { color: var(--danger); }
+
+.audio-card__result-row--neutral {
+  border-color: var(--border);
+  background: var(--surface-muted);
+}
+
+/* Result blocks (summary, transcript) */
+.audio-card__result-block {
+  padding: 0.75rem;
+  border-radius: 8px;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.audio-card__summary-text {
+  font-size: 0.92rem;
+  color: var(--text);
+  line-height: 1.65;
+  font-style: italic;
+}
+
+.audio-card__transcript-text {
+  font-size: 0.92rem;
+  color: var(--text);
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+/* Inline editor (transcript / summary correction) */
+.audio-card__edit-field {
+  font: inherit;
+  font-size: 0.92rem;
+  line-height: 1.65;
+  width: 100%;
+  padding: var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  resize: vertical;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+.audio-card__edit-field:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: var(--focus-ring);
+}
+
+.audio-card__processing {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 0.9rem;
+}
+
+.audio-card__error {
+  color: var(--danger);
+  font-size: 0.9rem;
+}
+
+.audio-card__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--border);
+}
+
+/* ------------------------------------------------------------------ *
+ * Confirm Dialog
+ * ------------------------------------------------------------------ */
+
+/* Backdrop natif de <dialog> */
+.confirm-dialog::backdrop {
+  background: rgba(16, 18, 28, 0.5);
+  backdrop-filter: blur(2px);
+  animation: backdrop-in 180ms ease;
+}
+
+@keyframes backdrop-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* La balise <dialog> elle-même est transparente et sert de zone de clic backdrop */
+.confirm-dialog {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  max-width: 100vw;
+  max-height: 100vh;
+  overflow: visible;
+}
+
+/* Panneau de contenu */
+.confirm-dialog__panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-6);
+  width: min(420px, calc(100vw - 2 * var(--space-5)));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  text-align: center;
+  animation: dialog-in 180ms ease;
+}
+
+@keyframes dialog-in {
+  from { transform: scale(0.94) translateY(-8px); opacity: 0; }
+  to   { transform: scale(1)    translateY(0);    opacity: 1; }
+}
+
+.confirm-dialog__icon {
+  font-size: 2.2rem;
+  line-height: 1;
+}
+
+.confirm-dialog__title {
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  margin: 0;
+  color: var(--text);
+}
+
+.confirm-dialog__message {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  max-width: 28rem;
+}
+
+.confirm-dialog__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  justify-content: center;
+  width: 100%;
+}
+
+.confirm-dialog__actions .btn {
+  min-width: 7rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .confirm-dialog__panel,
+  .confirm-dialog::backdrop {
+    animation: none;
+  }
+}

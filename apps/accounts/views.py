@@ -43,6 +43,7 @@ class RegisterView(APIView):
     Open to anyone; cannot set privileges. Starting the session here matches
     the SPA, which navigates straight to the app after a successful signup.
     """
+    """Create a new user account and immediately start a session."""
 
     permission_classes = [AllowAny]
 
@@ -50,6 +51,8 @@ class RegisterView(APIView):
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
+        # Log the user in right away so the session cookie is set,
+        # exactly like LoginView does — no separate login step needed.
         auth_login(request, user)
         return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
 
