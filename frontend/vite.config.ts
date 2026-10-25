@@ -1,6 +1,9 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+// The backend CORS allowlist is configured for port 3000, so the dev server
+// must run there and must fail loudly if the port is already taken. API calls
+// are proxied so the browser sees one origin and sends session/CSRF cookies.
 // Module 2 dev server runs on port 3000.
 // The proxy forwards /api/ and /media/ to Django, allowing the SPA
 // to communicate with the backend during local development.

@@ -7,8 +7,7 @@ import { AuthContext, type AuthContextValue, type AuthStatus } from './authConte
 /** True when the backend still reports an authenticated session. */
 async function isSessionActive(): Promise<boolean> {
   try {
-    await authApi.me()
-    return true
+    return Boolean(await authApi.me())
   } catch {
     return false
   }
@@ -21,11 +20,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loadCurrentUser = useCallback(async () => {
     try {
       const currentUser = await authApi.me()
+      if (!currentUser) {
+        // 204 means "no session"; that is a normal signed-out state.
+        setUser(null)
+        setStatus('unauthenticated')
+        return
+      }
       setUser(currentUser)
       setStatus('authenticated')
     } catch {
-      // 401/403 simply means "no active session". A network or server error
-      // during bootstrap also leaves the app signed out, but must not crash it.
+      // A network or server error during bootstrap also leaves the app signed
+      // out, but must not crash it.
       setUser(null)
       setStatus('unauthenticated')
     }

@@ -47,6 +47,18 @@ class RegistrationTests(APITestCase):
         self.assertNotIn("password_confirm", response.data)
         self.assertEqual(response.data["username"], "newuser")
 
+    def test_register_starts_a_session(self):
+        response = self.client.post(
+            reverse("accounts-register"), registration_payload(), format="json"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        # The SPA goes straight to the app after signup, so registration must
+        # establish the session cookie rather than requiring a second login.
+        me = self.client.get(reverse("accounts-me"))
+        self.assertEqual(me.status_code, status.HTTP_200_OK)
+        self.assertEqual(me.data["username"], "newuser")
+
     def test_register_rejects_duplicate_username(self):
         User.objects.create_user(username="newuser", password="S3cure-Passw0rd!")
 
@@ -158,7 +170,7 @@ class LogoutTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertEqual(
             self.client.get(reverse("accounts-me")).status_code,
-            status.HTTP_403_FORBIDDEN,
+            status.HTTP_204_NO_CONTENT,
         )
 
     def test_logout_requires_authentication(self):
@@ -176,10 +188,11 @@ class MeTests(APITestCase):
             username="bob", email="bob@example.com", password="S3cure-Passw0rd!"
         )
 
-    def test_me_requires_authentication(self):
+    def test_me_returns_204_when_not_authenticated(self):
         response = self.client.get(reverse("accounts-me"))
 
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(response.content, b"")
 
     def test_me_returns_only_the_authenticated_users_data(self):
         self.client.force_login(self.alice)
