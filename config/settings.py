@@ -48,7 +48,7 @@ SECRET_KEY = os.environ.get(
 DEBUG = env_bool("DJANGO_DEBUG", default=True)
 
 # Hosts the site is allowed to serve. Defaults cover local development.
-ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost")
+ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost,testserver")
 
 
 # Application definition
@@ -183,7 +183,6 @@ CORS_ALLOWED_ORIGINS = env_list(
     "http://localhost:3000,http://127.0.0.1:3000",
 )
 CORS_ALLOW_CREDENTIALS = True
-
 
 # Session cookie settings — keep the session cookie accessible to the Vite
 # proxy in development (SameSite=Lax, not Strict, so it travels through the
