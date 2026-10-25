@@ -38,6 +38,16 @@ class RegistrationTests(APITestCase):
         self.assertFalse(user.is_staff)
         self.assertFalse(user.is_superuser)
 
+    def test_register_starts_a_session(self):
+        response = self.client.post(
+            reverse("accounts-register"), registration_payload(), format="json"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        me = self.client.get(reverse("accounts-me"))
+        self.assertEqual(me.status_code, status.HTTP_200_OK)
+        self.assertEqual(me.data["username"], "newuser")
+
     def test_register_response_never_exposes_password(self):
         response = self.client.post(
             reverse("accounts-register"), registration_payload(), format="json"

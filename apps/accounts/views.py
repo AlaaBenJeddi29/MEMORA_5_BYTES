@@ -4,7 +4,7 @@ These endpoints match the project's existing REST_FRAMEWORK configuration
 (``SessionAuthentication`` + ``IsAuthenticated``). No tokens, no extra
 dependencies, and no custom user model.
 
-    POST /api/accounts/register/  -> create a user (public)
+    POST /api/accounts/register/  -> create a user and start a session (public)
     POST /api/accounts/login/     -> start a session (public)
     POST /api/accounts/logout/    -> end the session (authenticated)
     GET  /api/accounts/me/        -> the authenticated user only (authenticated)
@@ -46,6 +46,9 @@ class RegisterView(APIView):
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
+        # The SPA treats a successful registration as signed in, so establish
+        # the session here instead of sending the user back to the login form.
+        auth_login(request, user)
         return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
 
 

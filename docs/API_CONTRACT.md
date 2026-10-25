@@ -19,11 +19,12 @@ Base URL for local development: `http://127.0.0.1:8000`
 | Journal | `/api/journal/` | none (empty router) |
 | Audio | `/api/audio/` | none (empty router) |
 | Summaries | `/api/summaries/` | none (empty router) |
-| Media | `/api/media/` | none (empty router) |
+| Media | `/api/media/` | list, detail, update, delete, upload, generate, mock journal |
 | People | `/api/people/` | none (empty router) |
 
-There are **no models** yet in any app — every `models.py` is an empty stub. So the
-field lists in section 3 are proposals, not existing schema.
+`apps/media_library` now has a `MediaFile` model and implemented endpoints.
+The other business apps are still stubs, so the field lists in section 3 remain
+proposals for them.
 
 ---
 
@@ -165,9 +166,13 @@ resource exposes:
 { "id": 7, "status": "processing", "error": null }
 ```
 
-- Submitting AI work returns **`202 Accepted`** with `status: "pending"` (or
-  `processing`) so the client can poll.
+- Submitting asynchronous AI work returns **`202 Accepted`** with
+  `status: "pending"` (or `processing`) so the client can poll.
 - Poll the resource's detail endpoint until `succeeded`/`failed`.
+- **Media generation is synchronous** in Module 4: the request polls local
+  ComfyUI with a bounded deadline and returns `201` only after storing a
+  successful image. Persisted rows are `succeeded`; failures return an error and
+  create no row. The status choices remain ready for a future async queue.
 - **Never** log journal text, transcripts, tokens, face encodings, or raw media.
 - AI providers are wrapped in a service layer with timeouts and mocked in tests;
   the test suite never makes a real paid call.
@@ -190,6 +195,7 @@ All payloads below were captured from the running code.
 | **Ownership** | Creates the caller's own account |
 | **Request** | `username` (unique), `email` (unique, optional), `password`, `password_confirm` |
 | **Response** | `201` + user object |
+| **Session** | Starts an authenticated session; the SPA lands signed in |
 | **Never accepted** | `is_staff`, `is_superuser`, `groups`, `user_permissions` — silently ignored |
 
 Request:
@@ -388,16 +394,150 @@ Upload errors → `400` (`{"file": ["File too large. Maximum size is 25 MB."]}`)
   `{"non_field_errors": ["No entries found for the requested period."]}`.
 - AI failures never leak internals: `{"status": "failed", "error": "Summarization failed."}`.
 
-### 3.5 Media
+### 3.5 Media **[IMPLEMENTED]**
 
 | Method | Path | Auth | Ownership |
 | --- | --- | --- | --- |
-| `GET` | `/api/media/` | Required | Only the caller's uploads |
+| `GET` | `/api/media/` | Required | Only the caller's media |
 | `POST` | `/api/media/` | Required | Upload owned by caller |
+| `GET` | `/api/media/{id}/` | Required | 404 if not owner |
+| `PATCH` | `/api/media/{id}/` | Required | 404 if not owner; `prompt` only |
+| `PUT` | `/api/media/{id}/` | Required | 404 if not owner; `prompt` required |
 | `DELETE` | `/api/media/{id}/` | Required | 404 if not owner |
+| `POST` | `/api/media/generate/` | Required | Generated media owned by caller |
+| `GET` | `/api/media/mock-journal-entries/` | Required | Read-only fixture; no DB writes |
 
-Fields (proposal): `id`, `file`, `kind` (`image`/`video`), `status` (§1.9),
-`created_at`. Delete returns `204`.
+Fields: `id`, `file`, `media_type` (`original` / `ai_generated`), `prompt`,
+`status` (§1.9), `journal_entry_id`, `created_at`, `updated_at`.
+`owner`, `file`, `media_type`, `status`, and `journal_entry_id` are
+server-controlled; sending them in an update is ignored. `prompt` is the only
+client-writable metadata once a media row exists.
+
+> **Media access model:** API reads and writes are owner-scoped, but the `file`
+> value is an unguessable capability URL
+> (`/media/users/{owner_id}/{year}/{month}/{uuid}.ext`). With `DEBUG=True`,
+> Django serves `/media/` without authentication, so anyone holding the URL can
+> read the file. The URL does not expose a filesystem path, but it is not an
+> access-control boundary. Authenticated delivery, signed URLs, or private
+> object storage is unresolved (§4.11); until then, do not describe stored
+> media as owner-only at the file level.
+
+#### Upload — `POST /api/media/`
+
+`multipart/form-data` with a `file` field and optional `journal_entry_id`.
+Decoded image content is authoritative; JPEG, PNG, and WebP are accepted up to
+the configured byte and pixel limits. Files are stored under a per-user,
+unguessable path and remain byte-for-byte unchanged. Uploads are created as
+`media_type=original`, `status=succeeded`.
+
+> **Upload metadata caveat:** because original uploads are stored unchanged,
+> any EXIF/ICC metadata in the source file (including GPS coordinates and
+> device details) is preserved. Generated images are re-encoded and stripped
+> (§ below). Stripping upload metadata would change stored bytes and needs a
+> product decision.
+
+```json
+// 201
+{
+  "id": 11,
+  "file": "http://127.0.0.1:8000/media/users/1/2026/10/<uuid>.png",
+  "media_type": "original",
+  "prompt": "",
+  "status": "succeeded",
+  "journal_entry_id": null,
+  "created_at": "2026-10-24T20:15:00.000000Z",
+  "updated_at": "2026-10-24T20:15:00.000000Z"
+}
+```
+
+#### Generate — `POST /api/media/generate/`
+
+`Content-Type: application/json`. The backend is the only caller of local
+ComfyUI; React never receives the ComfyUI endpoint or workflow.
+
+```json
+{
+  "prompt": "A quiet lake at dawn, watercolor",
+  "journal_entry_id": 1,
+  "width": 512,
+  "height": 512,
+  "steps": 20,
+  "seed": 1234
+}
+```
+
+- `prompt` is required unless `journal_entry_id` is supplied. The default
+  maximum is 1000 characters and is configurable with
+  `MEDIA_GENERATION_MAX_PROMPT_LENGTH`; the server always re-validates it.
+  The UI shows scene-focused examples and guidance that the local model cannot
+  faithfully recreate a real person's likeness and that prompts should omit
+  names or private details about real people.
+- If `prompt` is omitted, the backend resolves the ID through the existing mock
+  journal provider and builds the prompt from that provider's **title only**.
+  Journal body text is deliberately never sent to ComfyUI. Client-supplied
+  title/content fields are ignored. This minimization must be revisited when
+  Module 1 provides real, user-owned journal context.
+- Default allowed sizes are `512x512`, `512x768`, and `768x512`; the first is
+  used when no size is supplied. `steps` defaults to 20 within the default
+  1-30 range. Both are server-side guardrails configured with
+  `MEDIA_GENERATION_ALLOWED_SIZES`, `MEDIA_GENERATION_MIN_STEPS`,
+  `MEDIA_GENERATION_MAX_STEPS`, and `MEDIA_GENERATION_DEFAULT_STEPS`. Unknown
+  request fields (for example `cfg_scale` or `negative_prompt`) are ignored
+  rather than forwarded to the provider.
+- The response is `201` only after a validated, metadata-free PNG is stored as
+  `media_type=ai_generated`, `status=succeeded`. The image is re-encoded before
+  storage and every source metadata block (prompt/workflow text chunks, EXIF,
+  ICC, DPI) is cleared; its dimensions must match the requested size. The UI
+  labels the result as AI-generated and states that it is not an original
+  photograph, and the detail dialog repeats that disclosure for stored AI
+  images.
+- Generation only starts from an explicit authenticated `POST`. The React form
+  requires a consent checkbox, disables the submit/retry controls while a
+  request is in flight, and uses an in-flight guard against double clicks.
+  The endpoint itself is **not idempotent**: there is no idempotency-key store,
+  so a repeated successful POST creates another image. This is a documented
+  limitation until the architecture adds a durable request ledger.
+- **No server-side throttle/concurrency guard yet.** The in-flight guard is
+  per browser tab; any authenticated caller can open additional requests, and
+  each synchronous request occupies a Django worker until ComfyUI finishes or
+  the bounded deadline expires. Add DRF throttling or a queue with a bounded
+  worker before exposing this endpoint beyond a trusted local setup (§4.11
+  item 12).
+- Application logs record only user ID, size, steps, prompt character count,
+  and journal ID. Prompt text, provider response bodies, and tokens are never
+  logged.
+- Failures: `400` validation, `403` unauthenticated, `502` generation/invalid
+  output, `503` ComfyUI unavailable or misconfigured, `504` generation timeout,
+  `500` storage failure. Error bodies contain safe messages only; provider
+  details and internal exceptions are not exposed.
+- See [`docs/COMFYUI.md`](COMFYUI.md) for local installation, configuration,
+  model licensing, and the real-generation smoke test.
+
+#### Detail, update, delete — `/api/media/{id}/`
+
+`GET` returns the same representation as the upload example. Every query is
+scoped to `request.user`; another user's media ID returns `404`.
+
+`PATCH`/`PUT` accept JSON and update only `prompt` (max 1000 chars, may be
+empty on `PUT`; `PUT` requires the field). `owner`, `file`, `media_type`,
+`status`, and `journal_entry_id` are read-only and are ignored if supplied.
+
+```json
+// PATCH request
+{ "prompt": "A memory rewritten in watercolor." }
+```
+
+`DELETE` returns `204`. The database row is deleted first; the stored file is
+removed after that transaction commits, and only when no other media row
+references the same stored name. A storage-cleanup failure does not resurrect
+the row: the request still returns `204` and a warning is logged.
+
+#### Mock journal fixture — `GET /api/media/mock-journal-entries/`
+
+Read-only list of the isolated in-memory fixture (`id`, `title`, `content`,
+`created_at`). It issues no database queries and never creates journal or
+media rows. It exists only to preview the Module 3 integration; the media
+`journal_entry_id` remains a plain nullable integer, not a foreign key.
 
 ### 3.6 People (faces)
 
@@ -435,15 +575,21 @@ Fields (proposal): `id`, `name`, `notes`, `created_at`.
    or the separate admin task?
 5. **Pagination:** adopt DRF `PageNumberPagination` (page size, max) — changes shared settings.
 6. **Error envelope:** keep DRF defaults (recommended) or add a uniform wrapper?
-7. **CSRF_TRUSTED_ORIGINS:** set it for cross-origin React, or standardize on a Vite proxy?
+7. **Dev API origin:** the React dev server now uses a Vite proxy for `/api`
+   and `/media`, so the browser stays on one origin and session/CSRF cookies
+   are first-party. Revisit `CSRF_TRUSTED_ORIGINS` only if the API is served
+   from a different origin.
 8. **Upload limits:** confirm size caps (25 MB audio / 10 MB image) and allowed MIME types,
    and whether to emit `400` or a custom `413`.
-9. **AI execution:** hosted APIs vs local models (affects latency, quotas, privacy);
-   see §1.9. Also: synchronous vs Celery/background for `status` transitions.
+9. **AI execution:** Module 4 uses local ComfyUI with a local SD model
+   (synchronous bounded polling). The other modules' providers and whether any
+   should move to Celery/background jobs remain open; see §1.9.
 10. **Face recognition / People:** opt-in mechanism and privacy policy wording; where
     `identify-faces` lives (§3.6).
 11. **Media storage:** local filesystem (dev) vs S3 from the start.
-12. **Rate limiting:** add DRF throttling on `login`/`register`?
+12. **Rate limiting:** add DRF throttling on `login`/`register` and on
+    `/api/media/generate/` (the generation endpoint has no server-side
+    throttle or concurrency cap today)?
 13. **API versioning:** introduce `/api/v1/` now or later.
 14. **`docs/API_CONTRACT.md` ownership:** who updates it, and when (per PR?).
 
@@ -455,3 +601,5 @@ Fields (proposal): `id`, `name`, `notes`, `created_at`.
 | --- | --- | --- |
 | 2026-10-15 | Initial draft: conventions + implemented Accounts endpoints + proposed module endpoints | — |
 | 2026-10-15 | §1.2: mark the React `PATCH /me/` example as proposed (today `/me/` is `GET` only) | — |
+| 2026-10-24 | §3.5: implement owner-scoped media upload/list and local ComfyUI generation; add `status`; document sync behavior and safe errors | Module 4 |
+| 2026-10-24 | §3.5: implement detail/update/delete with post-commit file cleanup, `prompt`-only updates, and the read-only mock journal endpoint | Module 4 |
