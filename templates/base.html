@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}MEMORA{% endblock %}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            background: #f4f4f4;
+            color: #222;
+        }
+        header {
+            background: #333;
+            color: #fff;
+            padding: 12px 20px;
+        }
+        header a {
+            color: #fff;
+            margin-right: 15px;
+        }
+        header form {
+            display: inline;
+        }
+        main {
+            max-width: 900px;
+            margin: 20px auto;
+            padding: 0 15px;
+        }
+        .card {
+            background: #fff;
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        .grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        .thumb {
+            width: 170px;
+        }
+        .thumb img {
+            max-width: 100%;
+            height: auto;
+        }
+        button {
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <a href="{% url 'people:person_list' %}">Personnes</a>
+        <a href="{% url 'people:photo_list' %}">Photos</a>
+        <a href="/admin/">Admin</a>
+        {% if user.is_authenticated %}
+            <span>Connecté : {{ user.username }}</span>
+            <form method="post" action="{% url 'admin:logout' %}">
+                {% csrf_token %}
+                <button type="submit">Déconnexion</button>
+            </form>
+        {% endif %}
+    </header>
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>

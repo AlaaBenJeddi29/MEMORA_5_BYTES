@@ -153,7 +153,7 @@ ROOT_URLCONF = "config.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        "DIRS": [BASE_DIR / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -213,6 +213,9 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 # MEMORA currently uses Django's built-in User model.
+
+# Les pages HTML protegees renvoient vers la connexion de l'admin.
+LOGIN_URL = "/admin/login/"
 
 
 # ============================================================

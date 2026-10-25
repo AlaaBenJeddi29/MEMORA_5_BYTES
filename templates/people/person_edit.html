@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+
+{% block title %}Modifier {{ person.name }} - MEMORA{% endblock %}
+
+{% block content %}
+<p><a href="{% url 'people:person_detail' person.pk %}">Retour à {{ person.name }}</a></p>
+
+<h1>Modifier {{ person.name }}</h1>
+
+{% if error %}
+    <p style="color: red;">{{ error }}</p>
+{% endif %}
+
+<div class="card">
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <p>
+            <label>Nom :
+                <input type="text" name="name" value="{{ person.name }}" required>
+            </label>
+        </p>
+        {% if person.avatar %}
+            <p><img src="{{ person.avatar.url }}" alt="{{ person.name }}" class="thumb"></p>
+        {% endif %}
+        <p>
+            <label>Nouvel avatar :
+                <input type="file" name="avatar" accept="image/*">
+            </label>
+        </p>
+        <button type="submit">Enregistrer</button>
+    </form>
+</div>
+{% endblock %}

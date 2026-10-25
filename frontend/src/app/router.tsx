@@ -1,4 +1,4 @@
-import { createBrowserRouter, RouterProvider } from 'react-router-dom'
+import { createBrowserRouter, Navigate, RouterProvider, useLocation } from 'react-router-dom'
 
 import { AdminLayout } from '../layouts/AdminLayout'
 import { AppLayout } from '../layouts/AppLayout'
@@ -9,16 +9,26 @@ import { HomePage } from '../pages/HomePage'
 import { NotFoundPage } from '../pages/NotFoundPage'
 
 import { MyAccountPage } from '../features/account/pages/MyAccountPage'
+import { AdminUsersPage } from '../features/admin/pages/AdminUsersPage'
 import { AudioListPage } from '../features/audio/pages/AudioListPage'
 import { LoginPage } from '../features/auth/pages/LoginPage'
 import { RegisterPage } from '../features/auth/pages/RegisterPage'
 import { DashboardPage } from '../features/dashboard/pages/DashboardPage'
 import { JournalListPage } from '../features/journal/pages/JournalListPage'
 import { MediaLibraryPage } from '../features/media-library/pages/MediaLibraryPage'
+import { MyPhotosPage } from '../features/people/pages/MyPhotosPage'
 import { PeoplePage } from '../features/people/pages/PeoplePage'
+import { PersonAlbumPage } from '../features/people/pages/PersonAlbumPage'
+import { PhotoTaggingPage } from '../features/people/pages/PhotoTaggingPage'
 import { SummariesPage } from '../features/summaries/pages/SummariesPage'
 
-import { RedirectIfAuthenticated, RequireAuth } from './guards'
+import { RedirectIfAuthenticated, RequireAuth, RequireStaff } from './guards'
+
+/** `/people/*` aliases redirect to the canonical authenticated `/app/people/*`. */
+function PeopleAlias() {
+  const location = useLocation()
+  return <Navigate to={`/app${location.pathname}${location.search}`} replace />
+}
 
 const router = createBrowserRouter(
   [
@@ -43,6 +53,8 @@ const router = createBrowserRouter(
         {
           element: <RequireAuth />,
           children: [
+            { path: 'people', element: <PeopleAlias /> },
+            { path: 'people/*', element: <PeopleAlias /> },
             {
               element: <AppLayout />,
               children: [
@@ -52,12 +64,23 @@ const router = createBrowserRouter(
                 { path: 'app/summaries', element: <SummariesPage /> },
                 { path: 'app/media', element: <MediaLibraryPage /> },
                 { path: 'app/people', element: <PeoplePage /> },
+                { path: 'app/people/photos', element: <MyPhotosPage /> },
+                { path: 'app/people/photos/:id', element: <PhotoTaggingPage /> },
+                { path: 'app/people/:id', element: <PersonAlbumPage /> },
                 { path: 'app/account', element: <MyAccountPage /> },
               ],
             },
             {
-              element: <AdminLayout />,
-              children: [{ path: 'admin', element: <AdminHomePage /> }],
+              element: <RequireStaff />,
+              children: [
+                {
+                  element: <AdminLayout />,
+                  children: [
+                    { path: 'admin', element: <AdminHomePage /> },
+                    { path: 'admin/users', element: <AdminUsersPage /> },
+                  ],
+                },
+              ],
             },
           ],
         },
