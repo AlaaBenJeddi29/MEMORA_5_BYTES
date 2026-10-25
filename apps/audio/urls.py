@@ -1,11 +1,18 @@
 """URL routes for the audio app.
 
-Mounted under ``/api/audio/`` by ``config/urls.py``. No routes are
-defined yet -- this is a scaffold placeholder.
+Mounted under ``/api/audio/`` by ``config/urls.py``.
+
+    GET  /api/audio/       → list voice memos
+    POST /api/audio/       → upload a voice memo
+    GET  /api/audio/{id}/  → retrieve a single memo
+    DELETE /api/audio/{id}/ → delete a single memo
 """
 
-from django.urls import path  # noqa: F401  (kept for the first real route)
+from django.urls import path
+
+from .views import AudioDetailView, AudioListCreateView
 
 urlpatterns = [
-    # Voice memo / audio upload endpoints will be added here.
+    path("", AudioListCreateView.as_view(), name="audio-list-create"),
+    path("<int:pk>/", AudioDetailView.as_view(), name="audio-detail"),
 ]
