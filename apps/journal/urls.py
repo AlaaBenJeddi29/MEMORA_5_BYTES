@@ -1,11 +1,14 @@
 """URL routes for the journal app.
 
-Mounted under ``/api/journal/`` by ``config/urls.py``. No routes are
-defined yet -- this is a scaffold placeholder.
+Mounted under ``/api/journal/`` by ``config/urls.py``. Registers the JournalEntryViewSet
+with a DefaultRouter for automatic CRUD + custom actions.
 """
 
-from django.urls import path  # noqa: F401  (kept for the first real route)
+from rest_framework.routers import DefaultRouter
 
-urlpatterns = [
-    # Journal entry endpoints will be added here.
-]
+from .views import JournalEntryViewSet
+
+router = DefaultRouter()
+router.register(r'entries', JournalEntryViewSet, basename='journal-entry')
+
+urlpatterns = router.urls
