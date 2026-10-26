@@ -11,6 +11,7 @@ from rest_framework import serializers
 from apps.journal.models import JournalEntry
 
 from .models import Summary, validate_themes
+from .search import MAX_QUERY_LENGTH
 
 MAX_SUMMARY_TEXT_LENGTH = 4_000
 MAX_ILLUSTRATION_PROMPT_LENGTH = 1_000
@@ -77,6 +78,39 @@ class SummarySerializer(serializers.ModelSerializer):
         except DjangoValidationError as exc:
             raise serializers.ValidationError(list(exc.messages)) from exc
         return value
+
+
+class SummarySearchQuerySerializer(serializers.Serializer):
+    """Validates the local summary search query string."""
+
+    q = serializers.CharField(
+        max_length=MAX_QUERY_LENGTH,
+        allow_blank=False,
+        trim_whitespace=True,
+        error_messages={
+            "required": "Enter a search query.",
+            "blank": "Enter a search query.",
+            "max_length": (
+                f"Keep the search query to {MAX_QUERY_LENGTH} characters or fewer."
+            ),
+        },
+    )
+
+
+class SummarySearchHitSerializer(serializers.Serializer):
+    """One scored search result, nested around the existing summary shape."""
+
+    summary = SummarySerializer(read_only=True)
+    score = serializers.FloatField(read_only=True)
+    matched_fields = serializers.ListField(
+        child=serializers.CharField(),
+        read_only=True,
+    )
+    matched_terms = serializers.ListField(
+        child=serializers.CharField(),
+        read_only=True,
+    )
+    snippet = serializers.CharField(read_only=True, allow_blank=True)
 
 
 class GenerateSummarySerializer(serializers.Serializer):

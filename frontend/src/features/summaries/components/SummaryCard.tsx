@@ -4,16 +4,19 @@ import { formatDateTime } from '../../../utils/format'
 
 export interface SummaryCardProps {
   summary: Summary
+  /** Search excerpt from the API; falls back to the summary text when empty. */
+  snippet?: string
   onView: (summary: Summary) => void
   onEdit: (summary: Summary) => void
   onDelete: (summary: Summary) => void
 }
 
-export function SummaryCard({ summary, onView, onEdit, onDelete }: SummaryCardProps) {
+export function SummaryCard({ summary, snippet, onView, onEdit, onDelete }: SummaryCardProps) {
   const title =
     summary.journal_entry_id === null
       ? `Summary #${summary.id}`
       : `Summary for journal entry #${summary.journal_entry_id}`
+  const excerpt = snippet?.trim() ? snippet : summary.summary_text
 
   return (
     <li className="card summary-card">
@@ -26,7 +29,7 @@ export function SummaryCard({ summary, onView, onEdit, onDelete }: SummaryCardPr
         <time dateTime={summary.created_at}>{formatDateTime(summary.created_at)}</time>
       </p>
 
-      <p className="summary-card__excerpt">{summary.summary_text}</p>
+      <p className="summary-card__excerpt">{excerpt}</p>
 
       {summary.themes.length > 0 && (
         <ul className="tag-list" aria-label={`Themes for summary ${summary.id}`}>

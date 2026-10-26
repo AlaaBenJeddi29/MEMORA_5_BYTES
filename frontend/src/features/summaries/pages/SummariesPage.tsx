@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { Alert } from '../../../components/Alert'
 import { Button } from '../../../components/Button'
@@ -7,13 +7,14 @@ import { LoadingState } from '../../../components/LoadingState'
 import { PageHeader } from '../../../components/PageHeader'
 import { useDocumentTitle } from '../../../hooks/useDocumentTitle'
 import { normalizeApiError, type NormalizedErrors } from '../../../services/errors'
-import { summariesApi } from '../../../services/summaries'
-import type { Summary } from '../../../types/summaries'
+import { SUMMARY_SEARCH_PAGE_SIZE, summariesApi } from '../../../services/summaries'
+import type { Summary, SummarySearchPage } from '../../../types/summaries'
 import { DeleteSummaryDialog } from '../components/DeleteSummaryDialog'
 import { GenerateSummaryDialog } from '../components/GenerateSummaryDialog'
 import { SummaryCard } from '../components/SummaryCard'
 import { SummaryDetailDialog } from '../components/SummaryDetailDialog'
 import { SummaryFormDialog } from '../components/SummaryFormDialog'
+import { SummarySearchBar } from '../components/SummarySearchBar'
 
 type ActiveDialog =
   | { kind: 'detail'; summary: Summary }
@@ -24,6 +25,7 @@ type ActiveDialog =
   | null
 
 type LoadStatus = 'loading' | 'ready' | 'error'
+type SearchStatus = 'idle' | 'loading' | 'ready' | 'error'
 
 function messagesOf(errors: NormalizedErrors | null): string[] {
   if (!errors) {
@@ -31,6 +33,18 @@ function messagesOf(errors: NormalizedErrors | null): string[] {
   }
   const messages = [...(errors.detail ? [errors.detail] : []), ...errors.formErrors]
   return messages.length > 0 ? messages : ['Something went wrong. Please try again.']
+}
+
+function searchMessagesOf(errors: NormalizedErrors | null): string[] {
+  if (!errors) {
+    return []
+  }
+  const messages = [
+    ...(errors.detail ? [errors.detail] : []),
+    ...errors.formErrors,
+    ...(errors.fieldErrors.q ?? []),
+  ]
+  return [...new Set(messages)]
 }
 
 export function SummariesPage() {
@@ -42,6 +56,19 @@ export function SummariesPage() {
   const [loadErrors, setLoadErrors] = useState<NormalizedErrors | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [dialog, setDialog] = useState<ActiveDialog>(null)
+
+  const [searchQuery, setSearchQuery] = useState('')
+  const [activeSearchQuery, setActiveSearchQuery] = useState('')
+  const [searchStatus, setSearchStatus] = useState<SearchStatus>('idle')
+  const [searchData, setSearchData] = useState<SummarySearchPage | null>(null)
+  const [searchErrors, setSearchErrors] = useState<NormalizedErrors | null>(null)
+  const [searchPage, setSearchPage] = useState(1)
+
+  const searchRequestRef = useRef<{
+    controller: AbortController
+    id: number
+  } | null>(null)
+  const searchRequestIdRef = useRef(0)
 
   const loadSummaries = useCallback(async (mode: 'initial' | 'refresh') => {
     if (mode === 'initial') {
@@ -67,6 +94,67 @@ export function SummariesPage() {
     void loadSummaries('initial')
   }, [loadSummaries])
 
+  useEffect(() => {
+    return () => {
+      searchRequestRef.current?.controller.abort()
+    }
+  }, [])
+
+  const clearSearch = useCallback(() => {
+    searchRequestRef.current?.controller.abort()
+    searchRequestRef.current = null
+    searchRequestIdRef.current += 1
+    setSearchQuery('')
+    setActiveSearchQuery('')
+    setSearchStatus('idle')
+    setSearchData(null)
+    setSearchErrors(null)
+    setSearchPage(1)
+  }, [])
+
+  const runSearch = useCallback(
+    async (rawQuery: string, page = 1) => {
+      const query = rawQuery.trim()
+      if (!query) {
+        clearSearch()
+        return
+      }
+
+      searchRequestRef.current?.controller.abort()
+      const controller = new AbortController()
+      const requestId = searchRequestIdRef.current + 1
+      searchRequestIdRef.current = requestId
+      searchRequestRef.current = { controller, id: requestId }
+
+      setActiveSearchQuery(query)
+      setSearchPage(page)
+      setSearchStatus('loading')
+      setSearchErrors(null)
+
+      try {
+        const data = await summariesApi.search(
+          { q: query, page },
+          { signal: controller.signal },
+        )
+        if (requestId !== searchRequestIdRef.current) {
+          return
+        }
+        setSearchData(data)
+        setSearchStatus('ready')
+      } catch (error) {
+        if (requestId !== searchRequestIdRef.current || controller.signal.aborted) {
+          return
+        }
+        if (error instanceof Error && error.name === 'AbortError') {
+          return
+        }
+        setSearchErrors(normalizeApiError(error))
+        setSearchStatus('error')
+      }
+    },
+    [clearSearch],
+  )
+
   function openDialog(next: ActiveDialog) {
     setNotice(null)
     setDialog(next)
@@ -76,12 +164,25 @@ export function SummariesPage() {
     setDialog(null)
   }
 
-  /** Close the dialog, report success, and re-read the list from Django. */
+  /** Close the dialog, report success, and re-read the list and active search. */
   function completeMutation(message: string) {
     setDialog(null)
     setNotice(message)
     void loadSummaries('refresh')
+    if (activeSearchQuery) {
+      void runSearch(activeSearchQuery, 1)
+    }
   }
+
+  const searchActive = activeSearchQuery.length > 0
+  const searchResults = searchData?.results ?? []
+  const searchCount = searchData?.count ?? 0
+  const totalSearchPages = Math.max(
+    1,
+    Math.ceil(searchCount / SUMMARY_SEARCH_PAGE_SIZE),
+  )
+  const currentSearchPage = Math.min(searchPage, totalSearchPages)
+  const searchErrorMessages = searchMessagesOf(searchErrors)
 
   return (
     <>
@@ -123,66 +224,181 @@ export function SummariesPage() {
         </Alert>
       )}
 
-      <section aria-labelledby="summaries-heading">
-        <h2 id="summaries-heading">Your summaries</h2>
+      <SummarySearchBar
+        value={searchQuery}
+        onChange={setSearchQuery}
+        onSubmit={() => void runSearch(searchQuery, 1)}
+        onClear={clearSearch}
+        isLoading={searchStatus === 'loading'}
+        hasActiveSearch={searchActive}
+      />
 
-        {status === 'loading' && <LoadingState label="Loading summaries…" />}
-
-        {status === 'error' && (
-          <div className="stack">
-            <Alert variant="error" title="We couldn’t load your summaries">
-              <ul className="alert__list">
-                {messagesOf(loadErrors).map((message, index) => (
-                  <li key={index}>{message}</li>
-                ))}
-              </ul>
-            </Alert>
-            <div>
-              <Button variant="secondary" onClick={() => void loadSummaries('initial')}>
-                Try again
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {status === 'ready' && (
+      <section aria-labelledby="summaries-heading" aria-busy={searchStatus === 'loading'}>
+        {searchActive ? (
           <>
-            {refreshing && (
-              <p className="muted" role="status">
-                Refreshing summaries…
-              </p>
+            <div className="summary-search-results__head">
+              <h2 id="summaries-heading">Résultats de recherche</h2>
+              {searchStatus === 'ready' && (
+                <p className="summary-search-results__count" role="status">
+                  {searchCount === 0
+                    ? 'Aucun résultat'
+                    : `${searchCount} résultat${searchCount > 1 ? 's' : ''}`}
+                </p>
+              )}
+            </div>
+
+            {searchStatus === 'loading' && (
+              <LoadingState label="Recherche dans vos souvenirs…" />
             )}
 
-            {summaries.length === 0 ? (
+            {searchStatus === 'error' && (
+              <Alert variant="error" title="La recherche n’a pas pu aboutir.">
+                <p>Réessayez.</p>
+                {searchErrorMessages.length > 0 && (
+                  <ul className="alert__list">
+                    {searchErrorMessages.map((message, index) => (
+                      <li key={index}>{message}</li>
+                    ))}
+                  </ul>
+                )}
+                <div className="alert__actions">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => void runSearch(activeSearchQuery, searchPage)}
+                  >
+                    Réessayer
+                  </Button>
+                </div>
+              </Alert>
+            )}
+
+            {searchStatus === 'ready' && searchCount === 0 && (
               <EmptyState
-                title="No summaries yet"
-                description="Generate a recap from one of your journal entries, or write one by hand."
+                title="Aucun souvenir correspondant à cette recherche."
+                description="Essayez une autre formulation."
                 actions={
-                  <>
-                    <Button onClick={() => openDialog({ kind: 'generate' })}>
-                      Generate your first summary
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      onClick={() => openDialog({ kind: 'create' })}
-                    >
-                      Write one manually
-                    </Button>
-                  </>
+                  <Button variant="secondary" onClick={clearSearch}>
+                    Effacer la recherche
+                  </Button>
                 }
               />
-            ) : (
-              <ul className="card-grid summary-grid" aria-label="Summaries">
-                {summaries.map((summary) => (
-                  <SummaryCard
-                    key={summary.id}
-                    summary={summary}
-                    onView={(item) => openDialog({ kind: 'detail', summary: item })}
-                    onEdit={(item) => openDialog({ kind: 'edit', summary: item })}
-                    onDelete={(item) => openDialog({ kind: 'delete', summary: item })}
+            )}
+
+            {searchStatus === 'ready' && searchCount > 0 && (
+              <>
+                <ul className="card-grid summary-grid" aria-label="Résultats de recherche">
+                  {searchResults.map((hit) => (
+                    <SummaryCard
+                      key={hit.summary.id}
+                      summary={hit.summary}
+                      snippet={hit.snippet}
+                      onView={(item) => openDialog({ kind: 'detail', summary: item })}
+                      onEdit={(item) => openDialog({ kind: 'edit', summary: item })}
+                      onDelete={(item) => openDialog({ kind: 'delete', summary: item })}
+                    />
+                  ))}
+                </ul>
+
+                {totalSearchPages > 1 && (
+                  <nav
+                    className="summary-search__pagination"
+                    aria-label="Pagination des résultats"
+                  >
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={!searchData?.previous}
+                      onClick={() =>
+                        void runSearch(activeSearchQuery, currentSearchPage - 1)
+                      }
+                    >
+                      Précédent
+                    </Button>
+                    <span className="muted" aria-live="polite">
+                      Page {currentSearchPage} sur {totalSearchPages}
+                    </span>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={!searchData?.next}
+                      onClick={() =>
+                        void runSearch(activeSearchQuery, currentSearchPage + 1)
+                      }
+                    >
+                      Suivant
+                    </Button>
+                  </nav>
+                )}
+              </>
+            )}
+          </>
+        ) : (
+          <>
+            <h2 id="summaries-heading">Your summaries</h2>
+
+            {status === 'loading' && <LoadingState label="Loading summaries…" />}
+
+            {status === 'error' && (
+              <div className="stack">
+                <Alert variant="error" title="We couldn’t load your summaries">
+                  <ul className="alert__list">
+                    {messagesOf(loadErrors).map((message, index) => (
+                      <li key={index}>{message}</li>
+                    ))}
+                  </ul>
+                </Alert>
+                <div>
+                  <Button
+                    variant="secondary"
+                    onClick={() => void loadSummaries('initial')}
+                  >
+                    Try again
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {status === 'ready' && (
+              <>
+                {refreshing && (
+                  <p className="muted" role="status">
+                    Refreshing summaries…
+                  </p>
+                )}
+
+                {summaries.length === 0 ? (
+                  <EmptyState
+                    title="No summaries yet"
+                    description="Generate a recap from one of your journal entries, or write one by hand."
+                    actions={
+                      <>
+                        <Button onClick={() => openDialog({ kind: 'generate' })}>
+                          Generate your first summary
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          onClick={() => openDialog({ kind: 'create' })}
+                        >
+                          Write one manually
+                        </Button>
+                      </>
+                    }
                   />
-                ))}
-              </ul>
+                ) : (
+                  <ul className="card-grid summary-grid" aria-label="Summaries">
+                    {summaries.map((summary) => (
+                      <SummaryCard
+                        key={summary.id}
+                        summary={summary}
+                        onView={(item) => openDialog({ kind: 'detail', summary: item })}
+                        onEdit={(item) => openDialog({ kind: 'edit', summary: item })}
+                        onDelete={(item) => openDialog({ kind: 'delete', summary: item })}
+                      />
+                    ))}
+                  </ul>
+                )}
+              </>
             )}
           </>
         )}

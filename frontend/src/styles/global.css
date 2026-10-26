@@ -775,6 +775,92 @@ hr {
   color: var(--text-muted);
 }
 
+/* Concept search on the summaries page. */
+.summary-search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+  padding: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.summary-search .field {
+  min-width: 0;
+}
+
+.summary-search__input {
+  position: relative;
+}
+
+.summary-search__input .input {
+  padding-inline-start: 2.35rem;
+}
+
+.summary-search__icon {
+  position: absolute;
+  top: 50%;
+  left: 0.8rem;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.summary-search__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.summary-search-results__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-4);
+}
+
+.summary-search-results__count {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.summary-search__pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+
+@media (max-width: 760px) {
+  .summary-search {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .summary-search__actions {
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 480px) {
+  .summary-search__actions {
+    flex-direction: column-reverse;
+  }
+
+  .summary-search__actions .btn {
+    width: 100%;
+  }
+}
+
 .textarea {
   min-height: 8rem;
   resize: vertical;

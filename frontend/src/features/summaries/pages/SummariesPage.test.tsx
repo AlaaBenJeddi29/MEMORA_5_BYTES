@@ -1,9 +1,13 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { jsonResponse } from '../../../test/fakeResponse'
 import type { JournalEntry, JournalPage } from '../../../types/journal'
-import type { Summary } from '../../../types/summaries'
+import type {
+  Summary,
+  SummarySearchHit,
+  SummarySearchPage,
+} from '../../../types/summaries'
 import { SummariesPage } from './SummariesPage'
 
 const SUMMARY: Summary = {
@@ -40,6 +44,8 @@ const JOURNAL_PAGE: JournalPage = {
 }
 
 const JOURNAL_PICKER_URL = '/api/journal/entries/?page=1&page_size=100'
+const SEARCH_PATH = '/api/summaries/search/'
+const SEARCH_LABEL = /Recherche dans vos souvenirs/i
 
 interface FetchCall {
   url: string
@@ -63,6 +69,36 @@ function callsOf(fetchMock: ReturnType<typeof installFetch>): FetchCall[] {
 
 function jsonBody(call: FetchCall | undefined): unknown {
   return call?.init.body ? JSON.parse(String(call.init.body)) : undefined
+}
+
+function searchPageOf(
+  results: SummarySearchHit[],
+  overrides: Partial<SummarySearchPage> = {},
+): SummarySearchPage {
+  return { count: results.length, next: null, previous: null, results, ...overrides }
+}
+
+function searchHitOf(
+  summaryOverrides: Partial<Summary> = {},
+  overrides: Partial<SummarySearchHit> = {},
+): SummarySearchHit {
+  const summary: Summary = { ...SUMMARY, ...summaryOverrides }
+  return {
+    summary,
+    score: 5,
+    matched_fields: ['summary_text'],
+    matched_terms: ['accomplishment'],
+    snippet: summary.summary_text,
+    ...overrides,
+  }
+}
+
+function isSearchCall(call: FetchCall): boolean {
+  return call.url.includes(SEARCH_PATH)
+}
+
+function searchParamsOf(call: FetchCall): URLSearchParams {
+  return new URL(call.url, 'http://localhost').searchParams
 }
 
 beforeEach(() => {
@@ -456,5 +492,394 @@ describe('SummariesPage', () => {
 
     expect(await screen.findByText(SUMMARY.summary_text)).toBeTruthy()
     expect(getCount).toBe(2)
+  })
+})
+
+describe('SummariesPage search', () => {
+  it('renders an accessible search bar and submits a concept query with Enter', async () => {
+    const first = searchHitOf(
+      { id: 11, journal_entry_id: 2, summary_text: 'A real accomplishment.' },
+      { snippet: '…a real sense of accomplishment.', score: 9 },
+    )
+    const second = searchHitOf(
+      { id: 12, journal_entry_id: 5, summary_text: 'A calm day at school.' },
+      {
+        snippet: '…school was calm.',
+        score: 4,
+        matched_fields: ['themes'],
+        matched_terms: ['school'],
+      },
+    )
+
+    const fetchMock = installFetch(({ url, init }) => {
+      const method = init.method ?? 'GET'
+      if (url.endsWith('/api/summaries/') && method === 'GET') {
+        return jsonResponse([SUMMARY])
+      }
+      if (isSearchCall({ url, init })) {
+        return jsonResponse(searchPageOf([first, second]))
+      }
+      throw new Error(`Unexpected request: ${method} ${url}`)
+    })
+
+    render(<SummariesPage />)
+    await screen.findByText(SUMMARY.summary_text)
+
+    const input = screen.getByLabelText(SEARCH_LABEL)
+    expect(input.getAttribute('type')).toBe('search')
+    expect(input.getAttribute('maxlength')).toBe('200')
+    expect(screen.getByRole('search')).toBeTruthy()
+
+    fireEvent.change(input, { target: { value: 'fierté' } })
+    fireEvent.submit(screen.getByRole('search'))
+
+    expect(await screen.findByText('…a real sense of accomplishment.')).toBeTruthy()
+
+    const results = screen.getByRole('list', { name: 'Résultats de recherche' })
+    expect(
+      within(results)
+        .getAllByRole('heading', { level: 3 })
+        .map((heading) => heading.textContent),
+    ).toEqual(['Summary for journal entry #2', 'Summary for journal entry #5'])
+    expect(screen.queryByText(SUMMARY.summary_text)).toBeNull()
+
+    const searchCall = callsOf(fetchMock).find(isSearchCall)
+    expect(searchCall).toBeDefined()
+    const params = searchParamsOf(searchCall!)
+    expect(params.get('q')).toBe('fierté')
+    expect(params.get('page')).toBe('1')
+    expect(params.get('page_size')).toBe('20')
+  })
+
+  it('shows a loading indicator while the search button request is in flight', async () => {
+    let resolveSearch!: (response: Response) => void
+    const pending = new Promise<Response>((resolve) => {
+      resolveSearch = resolve
+    })
+    const result = searchHitOf(
+      { id: 21, summary_text: 'A study session result.' },
+      { snippet: 'A study session result.' },
+    )
+
+    installFetch(({ url, init }) => {
+      const method = init.method ?? 'GET'
+      if (url.endsWith('/api/summaries/') && method === 'GET') {
+        return jsonResponse([SUMMARY])
+      }
+      if (isSearchCall({ url, init })) {
+        return pending
+      }
+      throw new Error(`Unexpected request: ${method} ${url}`)
+    })
+
+    render(<SummariesPage />)
+    await screen.findByText(SUMMARY.summary_text)
+
+    fireEvent.change(screen.getByLabelText(SEARCH_LABEL), {
+      target: { value: 'études' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Rechercher' }))
+
+    expect(await screen.findByText('Recherche dans vos souvenirs…')).toBeTruthy()
+    expect(
+      (screen.getByRole('button', { name: 'Recherche…' }) as HTMLButtonElement).disabled,
+    ).toBe(true)
+
+    await act(async () => {
+      resolveSearch(jsonResponse(searchPageOf([result])))
+      await pending
+    })
+
+    expect(await screen.findByText('A study session result.')).toBeTruthy()
+  })
+
+  it('shows the empty state when nothing matches', async () => {
+    installFetch(({ url, init }) => {
+      const method = init.method ?? 'GET'
+      if (url.endsWith('/api/summaries/') && method === 'GET') {
+        return jsonResponse([SUMMARY])
+      }
+      if (isSearchCall({ url, init })) {
+        return jsonResponse(searchPageOf([]))
+      }
+      throw new Error(`Unexpected request: ${method} ${url}`)
+    })
+
+    render(<SummariesPage />)
+    await screen.findByText(SUMMARY.summary_text)
+
+    fireEvent.change(screen.getByLabelText(SEARCH_LABEL), {
+      target: { value: 'astrophysique' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Rechercher' }))
+
+    expect(
+      await screen.findByText('Aucun souvenir correspondant à cette recherche.'),
+    ).toBeTruthy()
+    expect(screen.getByText('Essayez une autre formulation.')).toBeTruthy()
+    expect(
+      screen.getByRole('button', { name: 'Effacer la recherche' }),
+    ).toBeTruthy()
+  })
+
+  it('reports an API error and retries the same query', async () => {
+    const result = searchHitOf(
+      { id: 31, summary_text: 'A recovered result.' },
+      { snippet: 'A recovered result.' },
+    )
+    let searchCalls = 0
+
+    installFetch(({ url, init }) => {
+      const method = init.method ?? 'GET'
+      if (url.endsWith('/api/summaries/') && method === 'GET') {
+        return jsonResponse([SUMMARY])
+      }
+      if (isSearchCall({ url, init })) {
+        searchCalls += 1
+        if (searchCalls === 1) {
+          return jsonResponse({ detail: 'Search is temporarily unavailable.' }, 503)
+        }
+        return jsonResponse(searchPageOf([result]))
+      }
+      throw new Error(`Unexpected request: ${method} ${url}`)
+    })
+
+    render(<SummariesPage />)
+    await screen.findByText(SUMMARY.summary_text)
+
+    fireEvent.change(screen.getByLabelText(SEARCH_LABEL), {
+      target: { value: 'fierté' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Rechercher' }))
+
+    expect(
+      await screen.findByText('La recherche n’a pas pu aboutir.'),
+    ).toBeTruthy()
+    expect(screen.getByText('Search is temporarily unavailable.')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }))
+
+    expect(await screen.findByText('A recovered result.')).toBeTruthy()
+    expect(searchCalls).toBe(2)
+  })
+
+  it('shows the search error on a network failure', async () => {
+    installFetch(({ url, init }) => {
+      const method = init.method ?? 'GET'
+      if (url.endsWith('/api/summaries/') && method === 'GET') {
+        return jsonResponse([SUMMARY])
+      }
+      if (isSearchCall({ url, init })) {
+        throw new TypeError('Failed to fetch')
+      }
+      throw new Error(`Unexpected request: ${method} ${url}`)
+    })
+
+    render(<SummariesPage />)
+    await screen.findByText(SUMMARY.summary_text)
+
+    fireEvent.change(screen.getByLabelText(SEARCH_LABEL), {
+      target: { value: 'famille' },
+    })
+    fireEvent.submit(screen.getByRole('search'))
+
+    expect(
+      await screen.findByText('La recherche n’a pas pu aboutir.'),
+    ).toBeTruthy()
+    expect(
+      screen.getByText(
+        'We couldn’t reach the server. Check your connection and try again.',
+      ),
+    ).toBeTruthy()
+  })
+
+  it('clears the query and returns to the normal list', async () => {
+    const result = searchHitOf(
+      { id: 41, summary_text: 'A result to clear.' },
+      { snippet: 'A result to clear.' },
+    )
+
+    installFetch(({ url, init }) => {
+      const method = init.method ?? 'GET'
+      if (url.endsWith('/api/summaries/') && method === 'GET') {
+        return jsonResponse([SUMMARY])
+      }
+      if (isSearchCall({ url, init })) {
+        return jsonResponse(searchPageOf([result]))
+      }
+      throw new Error(`Unexpected request: ${method} ${url}`)
+    })
+
+    render(<SummariesPage />)
+    await screen.findByText(SUMMARY.summary_text)
+
+    const input = screen.getByLabelText(SEARCH_LABEL) as HTMLInputElement
+    fireEvent.change(input, { target: { value: 'fierté' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Rechercher' }))
+    await screen.findByText('A result to clear.')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Effacer' }))
+
+    expect(input.value).toBe('')
+    expect(document.activeElement).toBe(input)
+    expect(screen.queryByRole('list', { name: 'Résultats de recherche' })).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Your summaries' })).toBeTruthy()
+    expect(screen.getByText(SUMMARY.summary_text)).toBeTruthy()
+  })
+
+  it('paginates search results with the standard page parameters', async () => {
+    const first = searchHitOf(
+      { id: 51, journal_entry_id: 51, summary_text: 'First page result.' },
+      { snippet: 'First page result.' },
+    )
+    const second = searchHitOf(
+      { id: 52, journal_entry_id: 52, summary_text: 'Second page result.' },
+      { snippet: 'Second page result.' },
+    )
+    const requestedPages: string[] = []
+
+    installFetch(({ url, init }) => {
+      const method = init.method ?? 'GET'
+      if (url.endsWith('/api/summaries/') && method === 'GET') {
+        return jsonResponse([SUMMARY])
+      }
+      if (isSearchCall({ url, init })) {
+        const page = searchParamsOf({ url, init }).get('page') ?? ''
+        requestedPages.push(page)
+        if (page === '2') {
+          return jsonResponse(
+            searchPageOf([second], {
+              count: 21,
+              previous:
+                'http://localhost/api/summaries/search/?q=fierte&page=1&page_size=20',
+            }),
+          )
+        }
+        return jsonResponse(
+          searchPageOf([first], {
+            count: 21,
+            next: 'http://localhost/api/summaries/search/?q=fierte&page=2&page_size=20',
+          }),
+        )
+      }
+      throw new Error(`Unexpected request: ${method} ${url}`)
+    })
+
+    render(<SummariesPage />)
+    await screen.findByText(SUMMARY.summary_text)
+
+    fireEvent.change(screen.getByLabelText(SEARCH_LABEL), {
+      target: { value: 'fierté' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Rechercher' }))
+    await screen.findByText('First page result.')
+
+    expect(screen.getByText('Page 1 sur 2')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Suivant' }))
+
+    expect(await screen.findByText('Second page result.')).toBeTruthy()
+    expect(screen.getByText('Page 2 sur 2')).toBeTruthy()
+    expect(requestedPages).toEqual(['1', '2'])
+    expect(
+      (screen.getByRole('button', { name: 'Suivant' }) as HTMLButtonElement).disabled,
+    ).toBe(true)
+  })
+
+  it('opens a search result in the existing detail dialog', async () => {
+    const result = searchHitOf(
+      {
+        id: 61,
+        journal_entry_id: null,
+        summary_text: 'A proud moment worth revisiting.',
+      },
+      { snippet: '…proud…' },
+    )
+
+    installFetch(({ url, init }) => {
+      const method = init.method ?? 'GET'
+      if (url.endsWith('/api/summaries/') && method === 'GET') {
+        return jsonResponse([SUMMARY])
+      }
+      if (isSearchCall({ url, init })) {
+        return jsonResponse(searchPageOf([result]))
+      }
+      throw new Error(`Unexpected request: ${method} ${url}`)
+    })
+
+    render(<SummariesPage />)
+    await screen.findByText(SUMMARY.summary_text)
+
+    fireEvent.change(screen.getByLabelText(SEARCH_LABEL), {
+      target: { value: 'fierté' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Rechercher' }))
+    await screen.findByText('…proud…')
+
+    fireEvent.click(screen.getByRole('button', { name: 'View summary 61' }))
+
+    const dialog = await screen.findByRole('dialog')
+    expect(
+      within(dialog).getByText('A proud moment worth revisiting.'),
+    ).toBeTruthy()
+  })
+
+  it('keeps editing available from search results and refreshes the search', async () => {
+    const original = searchHitOf(
+      { id: 71, journal_entry_id: 2, summary_text: 'Original recap.' },
+      { snippet: 'Original recap.' },
+    )
+    const updatedSummary: Summary = {
+      ...original.summary,
+      summary_text: 'Updated recap.',
+      updated_at: '2026-10-22T10:00:00Z',
+    }
+    const updatedHit: SummarySearchHit = {
+      ...original,
+      summary: updatedSummary,
+      snippet: 'Updated recap.',
+    }
+    let listCalls = 0
+    let searchCalls = 0
+
+    const fetchMock = installFetch(({ url, init }) => {
+      const method = init.method ?? 'GET'
+      if (url.endsWith('/api/summaries/') && method === 'GET') {
+        listCalls += 1
+        return jsonResponse([listCalls === 1 ? original.summary : updatedSummary])
+      }
+      if (isSearchCall({ url, init })) {
+        searchCalls += 1
+        return jsonResponse(searchPageOf([searchCalls === 1 ? original : updatedHit]))
+      }
+      if (url.endsWith('/api/summaries/71/') && method === 'PATCH') {
+        return jsonResponse(updatedSummary)
+      }
+      throw new Error(`Unexpected request: ${method} ${url}`)
+    })
+
+    render(<SummariesPage />)
+    await screen.findByText(original.summary.summary_text)
+
+    fireEvent.change(screen.getByLabelText(SEARCH_LABEL), {
+      target: { value: 'fierté' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Rechercher' }))
+    await screen.findByText('Original recap.')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit summary 71' }))
+    const dialog = screen.getByRole('dialog', { name: 'Edit summary' })
+    fireEvent.change(within(dialog).getByLabelText(/Summary text/), {
+      target: { value: 'Updated recap.' },
+    })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+    expect(await screen.findByText('Summary updated.')).toBeTruthy()
+    expect(await screen.findByText('Updated recap.')).toBeTruthy()
+    expect(searchCalls).toBe(2)
+    expect(listCalls).toBe(2)
+
+    const patch = callsOf(fetchMock).find((call) => call.init.method === 'PATCH')
+    expect(patch?.url).toMatch(/\/api\/summaries\/71\/$/)
   })
 })
