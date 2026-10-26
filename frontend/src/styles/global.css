@@ -2435,6 +2435,8 @@ select.input {
 .textarea {
   min-height: 8rem;
   resize: vertical;
+}
+
 .summary-detail__text {
   font-family: var(--font-display);
   font-size: 1.08rem;
