@@ -254,25 +254,47 @@ LOGIN_LOCKOUT_SECONDS = env_int("LOGIN_LOCKOUT_SECONDS", 900)
 # EMAIL
 # ============================================================
 
-# Console backend in development prints verification and reset emails in the
-# runserver terminal. Production must provide real SMTP settings.
-DEFAULT_FROM_EMAIL = os.environ.get(
-    "DJANGO_DEFAULT_FROM_EMAIL",
-    "MEMORA <no-reply@memora.local>",
+# SMTP credentials may be supplied as MAIL_USERNAME / MAIL_PASSWORD /
+# MAIL_FROM_ADDRESS (Gmail style) or as DJANGO_EMAIL_HOST_USER /
+# DJANGO_EMAIL_HOST_PASSWORD / DJANGO_DEFAULT_FROM_EMAIL. The MAIL_* names win.
+_MAIL_USERNAME = (
+    os.environ.get("MAIL_USERNAME")
+    or os.environ.get("DJANGO_EMAIL_HOST_USER")
+    or ""
+).strip()
+_MAIL_PASSWORD = (
+    os.environ.get("MAIL_PASSWORD")
+    or os.environ.get("DJANGO_EMAIL_HOST_PASSWORD")
+    or ""
 )
-EMAIL_BACKEND = os.environ.get(
-    "DJANGO_EMAIL_BACKEND",
-    (
-        "django.core.mail.backends.smtp.EmailBackend"
-        if IS_PRODUCTION
-        else "django.core.mail.backends.console.EmailBackend"
-    ),
+
+DEFAULT_FROM_EMAIL = (
+    os.environ.get("DJANGO_DEFAULT_FROM_EMAIL")
+    or os.environ.get("MAIL_FROM_ADDRESS")
+    or "MEMORA <no-reply@memora.local>"
+).strip()
+
+# Real SMTP whenever credentials are configured; otherwise development keeps
+# printing messages in the runserver terminal.
+EMAIL_BACKEND = os.environ.get("DJANGO_EMAIL_BACKEND") or (
+    "django.core.mail.backends.smtp.EmailBackend"
+    if IS_PRODUCTION or _MAIL_USERNAME
+    else "django.core.mail.backends.console.EmailBackend"
 )
-EMAIL_HOST = os.environ.get("DJANGO_EMAIL_HOST", "localhost")
-EMAIL_PORT = env_int("DJANGO_EMAIL_PORT", 587)
-EMAIL_HOST_USER = os.environ.get("DJANGO_EMAIL_HOST_USER", "")
-EMAIL_HOST_PASSWORD = os.environ.get("DJANGO_EMAIL_HOST_PASSWORD", "")
-EMAIL_USE_TLS = env_bool("DJANGO_EMAIL_USE_TLS", default=True)
+EMAIL_HOST = (
+    os.environ.get("MAIL_HOST")
+    or os.environ.get("DJANGO_EMAIL_HOST")
+    or ("smtp.gmail.com" if _MAIL_USERNAME else "localhost")
+).strip()
+EMAIL_PORT = env_int("MAIL_PORT", env_int("DJANGO_EMAIL_PORT", 587))
+EMAIL_HOST_USER = _MAIL_USERNAME
+EMAIL_HOST_PASSWORD = _MAIL_PASSWORD
+# MAIL_ENCRYPTION=ssl switches to implicit TLS (usually port 465) instead of
+# STARTTLS on port 587.
+EMAIL_USE_SSL = (
+    os.environ.get("MAIL_ENCRYPTION", "").strip().lower() == "ssl"
+)
+EMAIL_USE_TLS = env_bool("DJANGO_EMAIL_USE_TLS", default=not EMAIL_USE_SSL)
 EMAIL_TIMEOUT = env_int("DJANGO_EMAIL_TIMEOUT", 10)
 
 

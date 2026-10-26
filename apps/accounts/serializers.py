@@ -168,7 +168,10 @@ class LoginSerializer(serializers.Serializer):
         username = attrs.get("username", "")
         password = attrs.get("password", "")
 
+        # Accept either the username or the account email in the same field.
         user = User.objects.filter(username=username).first()
+        if user is None:
+            user = User.objects.filter(email__iexact=username).first()
         if user is not None:
             if user.is_locked:
                 raise serializers.ValidationError(user.lockout_message())
@@ -184,7 +187,7 @@ class LoginSerializer(serializers.Serializer):
 
         authenticated = authenticate(
             request=self.context.get("request"),
-            username=username,
+            username=user.username if user is not None else username,
             password=password,
         )
         if authenticated is None:

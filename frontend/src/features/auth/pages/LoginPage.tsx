@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { Alert } from '../../../components/Alert'
 import { Button } from '../../../components/Button'
@@ -21,6 +21,10 @@ export function LoginPage() {
   const { login } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+  const [searchParams] = useSearchParams()
+
+  const justVerified = searchParams.get('verified') === '1'
+  const verificationFailed = searchParams.get('verify') === 'invalid'
 
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -65,6 +69,19 @@ export function LoginPage() {
         Pick up where you left off. Your pages are waiting exactly as you left them.
       </p>
 
+      {justVerified && (
+        <Alert variant="success" title="Email verified">
+          Your address is confirmed. Sign in with your username or email.
+        </Alert>
+      )}
+
+      {verificationFailed && (
+        <Alert variant="error" title="Verification link not valid">
+          That link expired or was already used. Sign in, then request a new
+          verification email from the registration page.
+        </Alert>
+      )}
+
       {formMessages.length > 0 && (
         <Alert variant="error" title="We couldn’t sign you in">
           <ul className="alert__list">
@@ -76,13 +93,13 @@ export function LoginPage() {
       )}
 
       <form className="form auth-form__fields" onSubmit={handleSubmit} noValidate>
-        <FormField label="Username" required error={errors.fieldErrors.username?.[0]}>
+        <FormField label="Username or email" required error={errors.fieldErrors.username?.[0]}>
           {(field) => (
             <TextInput
               {...field}
               name="username"
               autoComplete="username"
-              placeholder="Your username"
+              placeholder="Your username or email"
               required
               value={username}
               onChange={(event) => setUsername(event.target.value)}

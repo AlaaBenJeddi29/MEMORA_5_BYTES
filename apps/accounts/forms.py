@@ -5,6 +5,8 @@ The templates render each field manually; these widgets add the ``class``,
 help/error block rendered right below the input.
 """
 
+import logging
+
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.forms import (
     AuthenticationForm,
@@ -13,6 +15,8 @@ from django.contrib.auth.forms import (
     SetPasswordForm,
 )
 from django.core.exceptions import ValidationError
+
+logger = logging.getLogger("apps.accounts")
 
 User = get_user_model()
 
@@ -45,17 +49,25 @@ class AccessibleAuthenticationForm(AccessibleFormMixin, AuthenticationForm):
         "username": {"autocomplete": "username", "autofocus": True},
         "password": {"autocomplete": "current-password"},
     }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["username"].label = "Username or email"
+
     def get_invalid_login_error(self):
         return ValidationError(
             "Invalid username or password.", code="invalid_login"
         )
 
     def clean(self):
-        username = self.cleaned_data.get("username")
+        identifier = self.cleaned_data.get("username")
         password = self.cleaned_data.get("password")
 
-        if username is not None and password:
-            user = User.objects.filter(username=username).first()
+        if identifier is not None and password:
+            # The same field accepts a username or the account email.
+            user = User.objects.filter(username=identifier).first()
+            if user is None:
+                user = User.objects.filter(email__iexact=identifier).first()
             if user is not None:
                 if user.is_locked:
                     raise ValidationError(user.lockout_message(), code="locked")
@@ -69,9 +81,15 @@ class AccessibleAuthenticationForm(AccessibleFormMixin, AuthenticationForm):
                     )
 
             self.user_cache = authenticate(
-                self.request, username=username, password=password
+                self.request,
+                username=user.username if user is not None else identifier,
+                password=password,
             )
             if self.user_cache is None:
+                logger.warning(
+                    "Failed HTML sign-in attempt for username=%r",
+                    str(identifier)[:150],
+                )
                 if user is not None and user.register_failed_login():
                     raise ValidationError(
                         user.lockout_message(), code="locked"
