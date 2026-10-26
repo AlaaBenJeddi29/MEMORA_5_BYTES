@@ -3,6 +3,7 @@ import { useId, useState, type FormEvent } from 'react'
 import { Alert } from '../../../components/Alert'
 import { Button } from '../../../components/Button'
 import { FormField } from '../../../components/FormField'
+import { Icon } from '../../../components/Icon'
 import { StatusBadge } from '../../../components/StatusBadge'
 import { normalizeApiError, type NormalizedErrors } from '../../../services/errors'
 import { mediaApi } from '../../../services/media'
@@ -120,7 +121,7 @@ export function MediaDetailDialog({
                     </span>
                   ))
                 ) : (
-                  'Not linked'
+                  <span className="muted">Not linked</span>
                 )}
               </dd>
             </div>
@@ -128,9 +129,12 @@ export function MediaDetailDialog({
               <dt>Summary</dt>
               <dd>
                 {media.summary_id !== null ? (
-                  <a href="/app/summaries">Summary #{media.summary_id}</a>
+                  <a className="media-facts__link" href="/app/summaries">
+                    Summary #{media.summary_id}
+                    <Icon name="arrowUpRight" size={12} />
+                  </a>
                 ) : (
-                  'Not linked'
+                  <span className="muted">Not linked</span>
                 )}
               </dd>
             </div>
@@ -156,6 +160,7 @@ export function MediaDetailDialog({
               <h3 id={promptHeadingId}>{editing ? 'Edit prompt' : 'Prompt'}</h3>
               {!editing && (
                 <Button size="sm" variant="secondary" onClick={startEditing}>
+                  <Icon name="edit" size={14} />
                   Edit prompt
                 </Button>
               )}
@@ -232,6 +237,7 @@ export function MediaDetailDialog({
           Done
         </Button>
         <Button variant="danger" onClick={() => onDelete(media)}>
+          <Icon name="trash" size={15} />
           Delete image
         </Button>
       </div>

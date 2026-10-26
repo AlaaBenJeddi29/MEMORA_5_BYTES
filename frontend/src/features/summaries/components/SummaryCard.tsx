@@ -1,4 +1,5 @@
 import { Button } from '../../../components/Button'
+import { Icon } from '../../../components/Icon'
 import type { Summary } from '../../../types/summaries'
 import { formatDateTime } from '../../../utils/format'
 
@@ -16,17 +17,28 @@ export function SummaryCard({ summary, onView, onEdit, onDelete }: SummaryCardPr
       : `Summary for journal entry #${summary.journal_entry_id}`
 
   return (
-    <li className="card summary-card">
-      <div className="summary-card__header">
-        <h3 className="card__title">{title}</h3>
-        {summary.mood && <span className="badge badge--neutral">{summary.mood}</span>}
+    <li className="reflection-card">
+      <div className="reflection-card__top">
+        <span className="reflection-card__mark" aria-hidden="true">
+          <Icon name="sparkles" size={16} />
+        </span>
+        <time className="reflection-card__date" dateTime={summary.created_at}>
+          {formatDateTime(summary.created_at)}
+        </time>
+        {summary.mood && (
+          <span className="reflection-card__mood">
+            <Icon name="leaf" size={12} />
+            {summary.mood}
+          </span>
+        )}
       </div>
 
-      <p className="summary-card__source">
-        <time dateTime={summary.created_at}>{formatDateTime(summary.created_at)}</time>
-      </p>
+      <h3 className="reflection-card__title">{title}</h3>
 
-      <p className="summary-card__excerpt">{summary.summary_text}</p>
+      <blockquote className="reflection-card__excerpt">
+        <Icon name="quote" size={18} />
+        <p>{summary.summary_text}</p>
+      </blockquote>
 
       {summary.themes.length > 0 && (
         <ul className="tag-list" aria-label={`Themes for summary ${summary.id}`}>
@@ -38,31 +50,47 @@ export function SummaryCard({ summary, onView, onEdit, onDelete }: SummaryCardPr
         </ul>
       )}
 
-      <div className="summary-card__actions">
-        <Button
-          variant="secondary"
-          size="sm"
-          aria-label={`View summary ${summary.id}`}
-          onClick={() => onView(summary)}
-        >
-          View
-        </Button>
-        <Button
-          variant="secondary"
-          size="sm"
-          aria-label={`Edit summary ${summary.id}`}
-          onClick={() => onEdit(summary)}
-        >
-          Edit
-        </Button>
-        <Button
-          variant="danger"
-          size="sm"
-          aria-label={`Delete summary ${summary.id}`}
-          onClick={() => onDelete(summary)}
-        >
-          Delete
-        </Button>
+      <div className="reflection-card__foot">
+        {summary.journal_entry_id !== null && (
+          <a
+            className="reflection-card__source"
+            href={`/app/journal?edit=${summary.journal_entry_id}`}
+          >
+            Open entry #{summary.journal_entry_id}
+            <Icon name="arrowUpRight" size={13} />
+          </a>
+        )}
+
+        <div className="reflection-card__actions">
+          <Button
+            variant="secondary"
+            size="sm"
+            aria-label={`View summary ${summary.id}`}
+            onClick={() => onView(summary)}
+          >
+            <Icon name="eye" size={14} />
+            View
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label={`Edit summary ${summary.id}`}
+            onClick={() => onEdit(summary)}
+          >
+            <Icon name="edit" size={14} />
+            Edit
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="reflection-card__delete"
+            aria-label={`Delete summary ${summary.id}`}
+            onClick={() => onDelete(summary)}
+          >
+            <Icon name="trash" size={14} />
+            Delete
+          </Button>
+        </div>
       </div>
     </li>
   )

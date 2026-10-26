@@ -13,7 +13,9 @@
  */
 
 import { useEffect, useRef } from 'react'
+
 import { Button } from './Button'
+import { Icon } from './Icon'
 
 interface ConfirmDialogProps {
   open: boolean
@@ -80,8 +82,9 @@ export function ConfirmDialog({
       onClick={handleBackdropClick}
     >
       <div className="confirm-dialog__panel">
-        {/* Icône d'avertissement */}
-        <span className="confirm-dialog__icon" aria-hidden="true">⚠️</span>
+        <span className="confirm-dialog__icon" aria-hidden="true">
+          <Icon name="alert" size={22} />
+        </span>
 
         <h2 id="confirm-dialog-title" className="confirm-dialog__title">
           {title}
@@ -107,7 +110,7 @@ export function ConfirmDialog({
             onClick={onConfirm}
             disabled={busy}
           >
-            {busy ? 'Suppression…' : confirmLabel}
+            {busy ? `${confirmLabel}…` : confirmLabel}
           </Button>
         </div>
       </div>

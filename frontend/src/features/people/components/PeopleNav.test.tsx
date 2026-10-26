@@ -15,7 +15,7 @@ function tabs() {
 describe('PeopleNav', () => {
   it('shows Photos in the breadcrumb and tabs', () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <PeopleNav section="photos" />
       </MemoryRouter>,
     )
@@ -34,7 +34,7 @@ describe('PeopleNav', () => {
 
   it('links back to Photos and shows the current photo', () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <PeopleNav section="photos" currentLabel="Photo #7" />
       </MemoryRouter>,
     )
@@ -49,7 +49,7 @@ describe('PeopleNav', () => {
 
   it('shows the person name under the Personnes section', () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <PeopleNav section="people" currentLabel="Alice" />
       </MemoryRouter>,
     )

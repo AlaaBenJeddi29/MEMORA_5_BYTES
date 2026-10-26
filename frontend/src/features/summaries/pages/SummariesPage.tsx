@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Alert } from '../../../components/Alert'
 import { Button } from '../../../components/Button'
 import { EmptyState } from '../../../components/EmptyState'
+import { Icon } from '../../../components/Icon'
 import { LoadingState } from '../../../components/LoadingState'
 import { PageHeader } from '../../../components/PageHeader'
 import { useDocumentTitle } from '../../../hooks/useDocumentTitle'
@@ -14,6 +15,7 @@ import { GenerateSummaryDialog } from '../components/GenerateSummaryDialog'
 import { SummaryCard } from '../components/SummaryCard'
 import { SummaryDetailDialog } from '../components/SummaryDetailDialog'
 import { SummaryFormDialog } from '../components/SummaryFormDialog'
+import '../summaries.css'
 
 type ActiveDialog =
   | { kind: 'detail'; summary: Summary }
@@ -34,7 +36,7 @@ function messagesOf(errors: NormalizedErrors | null): string[] {
 }
 
 export function SummariesPage() {
-  useDocumentTitle('Summaries · MEMORA')
+  useDocumentTitle('Reflections · MEMORA')
 
   const [summaries, setSummaries] = useState<Summary[]>([])
   const [status, setStatus] = useState<LoadStatus>('loading')
@@ -84,16 +86,21 @@ export function SummariesPage() {
   }
 
   return (
-    <>
+    <div className="reflections-page">
       <PageHeader
-        title="Summaries"
-        description="AI-generated recaps of your journal entries. Generation runs on the server; editing and deleting never contact the model."
+        eyebrow="AI reflections"
+        title="Reflections"
+        description="Short recaps written from your own journal entries. Generation runs on your server; writing, editing and deleting here never contact the model."
         actions={
           <>
             <Button variant="secondary" onClick={() => openDialog({ kind: 'create' })}>
+              <Icon name="pen" size={15} />
               New summary
             </Button>
-            <Button onClick={() => openDialog({ kind: 'generate' })}>Generate summary</Button>
+            <Button onClick={() => openDialog({ kind: 'generate' })}>
+              <Icon name="sparkles" size={16} />
+              Generate summary
+            </Button>
           </>
         }
       />
@@ -112,24 +119,30 @@ export function SummariesPage() {
             ))}
           </ul>
           <div className="alert__actions">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => void loadSummaries('refresh')}
-            >
+            <Button variant="secondary" size="sm" onClick={() => void loadSummaries('refresh')}>
               Try again
             </Button>
           </div>
         </Alert>
       )}
 
-      <section aria-labelledby="summaries-heading">
-        <h2 id="summaries-heading">Your summaries</h2>
+      <section className="reflections-section" aria-labelledby="summaries-heading">
+        <div className="reflections-head">
+          <div>
+            <p className="eyebrow">Collected</p>
+            <h2 id="summaries-heading">Your summaries</h2>
+          </div>
+          {status === 'ready' && summaries.length > 0 && (
+            <p className="reflections-count">
+              {summaries.length} {summaries.length === 1 ? 'reflection' : 'reflections'}
+            </p>
+          )}
+        </div>
 
         {status === 'loading' && <LoadingState label="Loading summaries…" />}
 
         {status === 'error' && (
-          <div className="stack">
+          <div className="reflections-error">
             <Alert variant="error" title="We couldn’t load your summaries">
               <ul className="alert__list">
                 {messagesOf(loadErrors).map((message, index) => (
@@ -148,31 +161,30 @@ export function SummariesPage() {
         {status === 'ready' && (
           <>
             {refreshing && (
-              <p className="muted" role="status">
+              <p className="muted reflections-refreshing" role="status">
                 Refreshing summaries…
               </p>
             )}
 
             {summaries.length === 0 ? (
               <EmptyState
+                icon="sparkles"
                 title="No summaries yet"
                 description="Generate a recap from one of your journal entries, or write one by hand."
                 actions={
                   <>
                     <Button onClick={() => openDialog({ kind: 'generate' })}>
+                      <Icon name="sparkles" size={15} />
                       Generate your first summary
                     </Button>
-                    <Button
-                      variant="secondary"
-                      onClick={() => openDialog({ kind: 'create' })}
-                    >
+                    <Button variant="secondary" onClick={() => openDialog({ kind: 'create' })}>
                       Write one manually
                     </Button>
                   </>
                 }
               />
             ) : (
-              <ul className="card-grid summary-grid" aria-label="Summaries">
+              <ul className="reflection-grid" aria-label="Summaries">
                 {summaries.map((summary) => (
                   <SummaryCard
                     key={summary.id}
@@ -223,6 +235,6 @@ export function SummariesPage() {
           onGenerated={() => completeMutation('Summary generated.')}
         />
       )}
-    </>
+    </div>
   )
 }

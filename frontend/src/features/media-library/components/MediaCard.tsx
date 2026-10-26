@@ -1,4 +1,5 @@
 import { Button } from '../../../components/Button'
+import { Icon } from '../../../components/Icon'
 import type { MediaItem } from '../../../types/media'
 import { formatDateTime } from '../../../utils/format'
 import { MEDIA_TYPE_LABELS } from '../mediaHelpers'
@@ -33,6 +34,7 @@ export function MediaCard({ media, onOpen, onDelete }: MediaCardProps) {
           <MediaTypeBadge type={media.media_type} />
         </span>
         <span className="media-card__open" aria-hidden="true">
+          <Icon name="eye" size={15} />
           View image
         </span>
       </button>
@@ -53,6 +55,7 @@ export function MediaCard({ media, onOpen, onDelete }: MediaCardProps) {
             onClick={() => onOpen(media)}
             aria-label={`View ${typeLabel} ${media.id} details`}
           >
+            <Icon name="eye" size={14} />
             View details
           </Button>
           <Button
@@ -62,6 +65,7 @@ export function MediaCard({ media, onOpen, onDelete }: MediaCardProps) {
             onClick={() => onDelete(media)}
             aria-label={`Delete ${typeLabel} ${media.id}`}
           >
+            <Icon name="trash" size={14} />
             Delete
           </Button>
         </div>

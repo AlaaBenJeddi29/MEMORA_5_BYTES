@@ -1,22 +1,23 @@
 /**
  * VoiceRecorder — MediaRecorder-based recording UI.
-
+ *
  * Shows:
  *  - Idle: "Start recording" button
  *  - Recording: animated indicator + elapsed time + "Stop" button
- *  - Stopped: audio preview + "Upload" / "Re-record" buttons
+ *  - Stopped: audio preview + "Send & transcribe" / "Re-record" buttons
  *  - Analysing: live AI status (upload → pending → processing → done/failed)
  *  - Error: error message
  *
  * The analysis status comes from `analysis`, the entry returned by the upload
- * and kept fresh by polling, so the user sees "transcription en cours" while
- * the AI works instead of a frozen button.
+ * and kept fresh by polling, so the user sees the live pipeline instead of a
+ * frozen button.
  */
 
 import type { AudioEntry } from '../types/audio'
 import { useAudioRecorder } from '../hooks/useAudioRecorder'
 import { Button } from '../../../components/Button'
 import { Alert } from '../../../components/Alert'
+import { Icon } from '../../../components/Icon'
 
 interface VoiceRecorderProps {
   onUpload: (file: File) => Promise<AudioEntry | null>
@@ -36,7 +37,10 @@ function formatTime(seconds: number): string {
 
 type AnalysisStage = 'uploading' | 'queued' | 'processing' | 'succeeded' | 'failed'
 
-function analysisStage(uploading: boolean, analysis: AudioEntry | null | undefined): AnalysisStage | null {
+function analysisStage(
+  uploading: boolean,
+  analysis: AudioEntry | null | undefined,
+): AnalysisStage | null {
   if (analysis) {
     if (analysis.status === 'succeeded') return 'succeeded'
     if (analysis.status === 'failed') return 'failed'
@@ -47,12 +51,14 @@ function analysisStage(uploading: boolean, analysis: AudioEntry | null | undefin
 }
 
 const STAGE_TEXT: Record<AnalysisStage, string> = {
-  uploading: 'Uploading memo…',
-  queued: 'Memo received — transcribing…',
-  processing: 'AI running: Groq Whisper transcription, language, sentiment and summary…',
+  uploading: 'Uploading your memo…',
+  queued: 'Memo received — queued for transcription…',
+  processing: 'Transcribing and reading language, sentiment and summary on your server…',
   succeeded: 'Analysis complete.',
   failed: 'Analysis failed.',
 }
+
+const WAVE_BARS = Array.from({ length: 18 }, (_, index) => index)
 
 export function VoiceRecorder({ onUpload, uploading, uploadError, analysis }: VoiceRecorderProps) {
   const { state, elapsed, audioBlob, previewUrl, start, stop, reset, errorMessage } =
@@ -68,7 +74,45 @@ export function VoiceRecorder({ onUpload, uploading, uploadError, analysis }: Vo
   }
 
   return (
-    <section aria-label="Voice recorder" className="voice-recorder">
+    <section aria-label="Voice recorder" className={`voice-recorder voice-recorder--${state}`}>
+      <div className="voice-recorder__stage">
+        <div className="voice-recorder__orb" aria-hidden="true">
+          <Icon name={state === 'recording' ? 'wave' : 'mic'} size={30} strokeWidth={1.4} />
+        </div>
+
+        <div className="voice-recorder__copy">
+          <p className="voice-recorder__eyebrow">Voice recorder</p>
+          <p className="voice-recorder__lead">
+            {state === 'recording'
+              ? 'Listening…'
+              : state === 'requesting'
+                ? 'Waiting for your microphone…'
+                : state === 'stopped'
+                  ? 'Your take is ready.'
+                  : state === 'error'
+                    ? 'The microphone didn’t start.'
+                    : 'Ready when you are.'}
+          </p>
+          <p className="voice-recorder__hint">
+            {state === 'recording'
+              ? 'Speak naturally. You can listen back before sending.'
+              : state === 'requesting'
+                ? 'Allow microphone access in your browser to begin.'
+                : state === 'stopped'
+                  ? 'Listen back, then send it for transcription.'
+                  : 'Your memo stays on your server and is transcribed by the AI configured there.'}
+          </p>
+        </div>
+
+        {state === 'recording' && (
+          <div className="voice-recorder__wave" aria-hidden="true">
+            {WAVE_BARS.map((bar) => (
+              <span key={bar} />
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* ---- Recording indicator ---- */}
       {state === 'recording' && (
         <div className="voice-recorder__recording" role="status" aria-live="polite">
@@ -81,7 +125,6 @@ export function VoiceRecorder({ onUpload, uploading, uploadError, analysis }: Vo
       {/* ---- Audio preview ---- */}
       {state === 'stopped' && previewUrl && (
         <div className="voice-recorder__preview">
-          {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
           <audio controls src={previewUrl} className="voice-recorder__audio" />
         </div>
       )}
@@ -114,7 +157,8 @@ export function VoiceRecorder({ onUpload, uploading, uploadError, analysis }: Vo
       <div className="voice-recorder__controls">
         {(state === 'idle' || state === 'error') && (
           <Button onClick={start} variant="primary" aria-label="Start recording" disabled={uploading}>
-            🎙 Start recording
+            <Icon name="mic" size={16} />
+            Start recording
           </Button>
         )}
 
@@ -126,7 +170,8 @@ export function VoiceRecorder({ onUpload, uploading, uploadError, analysis }: Vo
 
         {state === 'recording' && (
           <Button onClick={stop} variant="danger" aria-label="Stop recording">
-            ⏹ Stop
+            <Icon name="stop" size={15} />
+            Stop
           </Button>
         )}
 
@@ -138,10 +183,12 @@ export function VoiceRecorder({ onUpload, uploading, uploadError, analysis }: Vo
               disabled={uploading}
               aria-label="Upload and transcribe recording"
             >
-              {uploading ? 'Uploading…' : '⬆ Send & transcribe'}
+              <Icon name="send" size={16} />
+              {uploading ? 'Uploading…' : 'Send & transcribe'}
             </Button>
             <Button onClick={reset} variant="secondary" disabled={uploading}>
-              🔄 Re-record
+              <Icon name="repeat" size={15} />
+              Re-record
             </Button>
           </>
         )}

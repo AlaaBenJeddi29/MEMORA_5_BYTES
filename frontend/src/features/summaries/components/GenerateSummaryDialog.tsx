@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Alert } from '../../../components/Alert'
 import { Button } from '../../../components/Button'
 import { FormField } from '../../../components/FormField'
+import { Icon } from '../../../components/Icon'
 import { LoadingState } from '../../../components/LoadingState'
 import { normalizeApiError, type NormalizedErrors } from '../../../services/errors'
 import { journalApi } from '../../../services/journal'
@@ -86,6 +87,11 @@ export function GenerateSummaryDialog({ onClose, onGenerated }: GenerateSummaryD
 
   return (
     <Dialog title="Generate a summary" onClose={onClose}>
+      <p className="summary-form__intro">
+        Choose one of your own entries. Only its ID is sent to your server, where the AI writes
+        the reflection.
+      </p>
+
       {generationMessages.length > 0 && (
         <Alert variant="error" title="We couldn’t generate a summary">
           <ul className="alert__list">
@@ -159,6 +165,7 @@ export function GenerateSummaryDialog({ onClose, onGenerated }: GenerateSummaryD
               Cancel
             </Button>
             <Button type="submit" disabled={generating}>
+              <Icon name="sparkles" size={15} />
               {generating ? 'Generating…' : 'Generate summary'}
             </Button>
           </div>

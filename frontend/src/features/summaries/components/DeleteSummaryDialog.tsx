@@ -2,6 +2,7 @@ import { useState } from 'react'
 
 import { Alert } from '../../../components/Alert'
 import { Button } from '../../../components/Button'
+import { Icon } from '../../../components/Icon'
 import { normalizeApiError, type NormalizedErrors } from '../../../services/errors'
 import { summariesApi } from '../../../services/summaries'
 import type { Summary } from '../../../types/summaries'
@@ -67,9 +68,14 @@ export function DeleteSummaryDialog({ summary, onClose, onDeleted }: DeleteSumma
         </Alert>
       )}
 
-      <p>
-        Delete {source}? This permanently removes it from your account and cannot be undone.
-      </p>
+      <div className="reflection-delete">
+        <span className="reflection-delete__icon" aria-hidden="true">
+          <Icon name="alert" size={22} />
+        </span>
+        <p>
+          Delete {source}? This permanently removes it from your account and cannot be undone.
+        </p>
+      </div>
     </Dialog>
   )
 }

@@ -1,12 +1,18 @@
 import { Link } from 'react-router-dom'
 
+import { Icon } from '../../../components/Icon'
 import '../people.css'
 
 type PeopleSection = 'people' | 'photos'
 
-const SECTIONS: ReadonlyArray<{ key: PeopleSection; to: string; label: string }> = [
-  { key: 'people', to: '/app/people', label: 'Personnes' },
-  { key: 'photos', to: '/app/people/photos', label: 'Mes photos' },
+const SECTIONS: ReadonlyArray<{
+  key: PeopleSection
+  to: string
+  label: string
+  icon: 'users' | 'camera'
+}> = [
+  { key: 'people', to: '/app/people', label: 'Personnes', icon: 'users' },
+  { key: 'photos', to: '/app/people/photos', label: 'Mes photos', icon: 'camera' },
 ]
 
 export type PeopleNavProps = {
@@ -60,6 +66,7 @@ export function PeopleNav({ section, currentLabel }: PeopleNavProps) {
                   }
                   aria-current={active ? 'page' : undefined}
                 >
+                  <Icon name={item.icon} size={14} />
                   {item.label}
                 </Link>
               </li>

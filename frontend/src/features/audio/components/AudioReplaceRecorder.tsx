@@ -14,6 +14,7 @@
 import { useAudioRecorder } from '../hooks/useAudioRecorder'
 import { Alert } from '../../../components/Alert'
 import { Button } from '../../../components/Button'
+import { Icon } from '../../../components/Icon'
 
 interface AudioReplaceRecorderProps {
   /** Resolves once the PATCH answer is known. */
@@ -58,7 +59,6 @@ export function AudioReplaceRecorder({ onFile, busy }: AudioReplaceRecorderProps
 
       {state === 'stopped' && previewUrl && (
         <div className="voice-recorder__preview">
-          {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
           <audio controls src={previewUrl} className="voice-recorder__audio" />
         </div>
       )}
@@ -68,7 +68,8 @@ export function AudioReplaceRecorder({ onFile, busy }: AudioReplaceRecorderProps
       <div className="voice-recorder__controls">
         {(state === 'idle' || state === 'error') && (
           <Button size="sm" onClick={start} variant="primary" disabled={busy}>
-            🎙 Start recording
+            <Icon name="mic" size={14} />
+            Start recording
           </Button>
         )}
 
@@ -80,7 +81,8 @@ export function AudioReplaceRecorder({ onFile, busy }: AudioReplaceRecorderProps
 
         {state === 'recording' && (
           <Button size="sm" onClick={stop} variant="danger" aria-label="Stop recording">
-            ⏹ Stop
+            <Icon name="stop" size={13} />
+            Stop
           </Button>
         )}
 
@@ -93,10 +95,12 @@ export function AudioReplaceRecorder({ onFile, busy }: AudioReplaceRecorderProps
               disabled={busy}
               aria-label="Replace the memo audio with this recording"
             >
-              {busy ? 'Sending…' : '⬆ Replace with this take'}
+              <Icon name="send" size={14} />
+              {busy ? 'Sending…' : 'Replace with this take'}
             </Button>
             <Button size="sm" onClick={reset} variant="secondary" disabled={busy}>
-              🔄 Re-record
+              <Icon name="repeat" size={13} />
+              Re-record
             </Button>
           </>
         )}

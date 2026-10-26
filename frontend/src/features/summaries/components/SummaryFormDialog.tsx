@@ -3,6 +3,7 @@ import { useState, type FormEvent } from 'react'
 import { Alert } from '../../../components/Alert'
 import { Button } from '../../../components/Button'
 import { FormField } from '../../../components/FormField'
+import { Icon } from '../../../components/Icon'
 import { TextInput } from '../../../components/TextInput'
 import { normalizeApiError, type NormalizedErrors } from '../../../services/errors'
 import { summariesApi } from '../../../services/summaries'
@@ -80,6 +81,12 @@ export function SummaryFormDialog({ mode, summary, onClose, onSaved }: SummaryFo
 
   return (
     <Dialog title={mode === 'edit' ? 'Edit summary' : 'New summary'} onClose={onClose}>
+      <p className="summary-form__intro">
+        {mode === 'edit'
+          ? 'Refine the wording, mood or themes. Saving never calls the AI again.'
+          : 'Write a reflection by hand, or link it to one of your journal entries.'}
+      </p>
+
       {formMessages.length > 0 && (
         <Alert variant="error" title="We couldn’t save the summary">
           <ul className="alert__list">
@@ -90,7 +97,7 @@ export function SummaryFormDialog({ mode, summary, onClose, onSaved }: SummaryFo
         </Alert>
       )}
 
-      <form className="form" onSubmit={handleSubmit} noValidate aria-busy={submitting}>
+      <form className="form summary-form" onSubmit={handleSubmit} noValidate aria-busy={submitting}>
         <FormField
           label="Summary text"
           required
@@ -100,7 +107,7 @@ export function SummaryFormDialog({ mode, summary, onClose, onSaved }: SummaryFo
           {(field) => (
             <textarea
               {...field}
-              className="input textarea"
+              className="input textarea summary-form__text"
               name="summary_text"
               rows={6}
               required
@@ -110,35 +117,39 @@ export function SummaryFormDialog({ mode, summary, onClose, onSaved }: SummaryFo
           )}
         </FormField>
 
-        <FormField
-          label="Mood"
-          hint={`Optional, up to ${MAX_MOOD_LENGTH} characters.`}
-          error={errors.fieldErrors.mood?.[0]}
-        >
-          {(field) => (
-            <TextInput
-              {...field}
-              name="mood"
-              value={values.mood}
-              onChange={(event) => update('mood', event.target.value)}
-            />
-          )}
-        </FormField>
+        <div className="summary-form__row">
+          <FormField
+            label="Mood"
+            hint={`Optional, up to ${MAX_MOOD_LENGTH} characters.`}
+            error={errors.fieldErrors.mood?.[0]}
+          >
+            {(field) => (
+              <TextInput
+                {...field}
+                name="mood"
+                placeholder="e.g., calm, hopeful…"
+                value={values.mood}
+                onChange={(event) => update('mood', event.target.value)}
+              />
+            )}
+          </FormField>
 
-        <FormField
-          label="Themes"
-          hint={`Optional, comma-separated, up to ${MAX_THEMES} themes.`}
-          error={errors.fieldErrors.themes?.[0]}
-        >
-          {(field) => (
-            <TextInput
-              {...field}
-              name="themes"
-              value={values.themes}
-              onChange={(event) => update('themes', event.target.value)}
-            />
-          )}
-        </FormField>
+          <FormField
+            label="Themes"
+            hint={`Optional, comma-separated, up to ${MAX_THEMES} themes.`}
+            error={errors.fieldErrors.themes?.[0]}
+          >
+            {(field) => (
+              <TextInput
+                {...field}
+                name="themes"
+                placeholder="e.g., work, rest"
+                value={values.themes}
+                onChange={(event) => update('themes', event.target.value)}
+              />
+            )}
+          </FormField>
+        </div>
 
         <FormField
           label="Illustration prompt"
@@ -148,7 +159,7 @@ export function SummaryFormDialog({ mode, summary, onClose, onSaved }: SummaryFo
           {(field) => (
             <textarea
               {...field}
-              className="input textarea"
+              className="input textarea summary-form__prompt"
               name="illustration_prompt"
               rows={3}
               value={values.illustration_prompt}
@@ -180,11 +191,8 @@ export function SummaryFormDialog({ mode, summary, onClose, onSaved }: SummaryFo
             Cancel
           </Button>
           <Button type="submit" disabled={submitting}>
-            {submitting
-              ? 'Saving…'
-              : mode === 'edit'
-                ? 'Save changes'
-                : 'Create summary'}
+            <Icon name={mode === 'edit' ? 'check' : 'plus'} size={15} />
+            {submitting ? 'Saving…' : mode === 'edit' ? 'Save changes' : 'Create summary'}
           </Button>
         </div>
       </form>
