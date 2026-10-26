@@ -7,7 +7,7 @@ ComfyUI client. No network or GPU is required.
 import tempfile
 from io import BytesIO
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import requests
 from django.conf import settings
@@ -21,6 +21,7 @@ from PIL.PngImagePlugin import PngInfo
 from rest_framework import status
 from rest_framework.test import APITestCase
 
+from . import comfyui
 from .comfyui import (
     MAX_DOWNLOAD_BYTES,
     ComfyUIClient,
@@ -537,6 +538,455 @@ class ComfyUIClientTests(TestCase):
                 height=512,
                 steps=10,
             )
+
+    def assert_generation_raises(self, exception, session, **overrides):
+        with self.assertRaises(exception):
+            self.make_client(session, **overrides).generate(
+                prompt="A garden",
+                width=512,
+                height=512,
+                steps=10,
+            )
+
+    def test_submit_timeout_maps_to_timeout(self):
+        self.assert_generation_raises(
+            ComfyUITimeoutError,
+            FakeSession(post_response=requests.Timeout()),
+        )
+
+    def test_submit_server_error_maps_to_unavailable(self):
+        self.assert_generation_raises(
+            ComfyUIUnavailableError,
+            FakeSession(post_response=FakeHTTPResponse(status_code=500)),
+        )
+
+    def test_submit_non_mapping_payload_is_rejected(self):
+        self.assert_generation_raises(
+            ComfyUIInvalidOutputError,
+            FakeSession(post_response=FakeHTTPResponse(payload=[])),
+        )
+
+    def test_submit_node_errors_map_to_generation_error(self):
+        self.assert_generation_raises(
+            ComfyUIGenerationError,
+            FakeSession(
+                post_response=FakeHTTPResponse(
+                    payload={"prompt_id": "job-1", "node_errors": {"1": "bad"}},
+                )
+            ),
+        )
+
+    def test_submit_unsafe_prompt_id_is_rejected(self):
+        self.assert_generation_raises(
+            ComfyUIInvalidOutputError,
+            FakeSession(
+                post_response=FakeHTTPResponse(payload={"prompt_id": "bad id!"})
+            ),
+        )
+
+    def test_history_timeout_maps_to_timeout(self):
+        self.assert_generation_raises(
+            ComfyUITimeoutError,
+            FakeSession(
+                post_response=submit_response(),
+                history_responses=[requests.Timeout()],
+            ),
+        )
+
+    def test_history_connection_error_maps_to_unavailable(self):
+        self.assert_generation_raises(
+            ComfyUIUnavailableError,
+            FakeSession(
+                post_response=submit_response(),
+                history_responses=[requests.ConnectionError()],
+            ),
+        )
+
+    def test_history_server_error_maps_to_unavailable(self):
+        self.assert_generation_raises(
+            ComfyUIUnavailableError,
+            FakeSession(
+                post_response=submit_response(),
+                history_responses=[FakeHTTPResponse(status_code=500)],
+            ),
+        )
+
+    def test_history_missing_job_maps_to_generation_error(self):
+        self.assert_generation_raises(
+            ComfyUIGenerationError,
+            FakeSession(
+                post_response=submit_response(),
+                history_responses=[FakeHTTPResponse(status_code=404)],
+            ),
+        )
+
+    def test_history_unexpected_status_maps_to_generation_error(self):
+        self.assert_generation_raises(
+            ComfyUIGenerationError,
+            FakeSession(
+                post_response=submit_response(),
+                history_responses=[FakeHTTPResponse(status_code=403)],
+            ),
+        )
+
+    def test_history_non_mapping_payload_is_rejected(self):
+        self.assert_generation_raises(
+            ComfyUIInvalidOutputError,
+            FakeSession(
+                post_response=submit_response(),
+                history_responses=[FakeHTTPResponse(payload=[])],
+            ),
+        )
+
+    def test_history_non_mapping_entry_is_rejected(self):
+        self.assert_generation_raises(
+            ComfyUIInvalidOutputError,
+            FakeSession(
+                post_response=submit_response(),
+                history_responses=[FakeHTTPResponse(payload={"job-1": "bad"})],
+            ),
+        )
+
+    def test_incomplete_history_is_polled_until_completed(self):
+        session = FakeSession(
+            post_response=submit_response(),
+            history_responses=[
+                history_response(completed=False),
+                history_response(),
+            ],
+            view_response=image_response(image_bytes(size=(512, 512))),
+        )
+
+        generated = self.make_client(session).generate(
+            prompt="A garden",
+            width=512,
+            height=512,
+            steps=10,
+        )
+
+        self.assertTrue(generated.data)
+        self.assertEqual(
+            len([call for call in session.calls if "/history/" in call[1]]),
+            2,
+        )
+
+    def test_download_timeout_maps_to_timeout(self):
+        self.assert_generation_raises(
+            ComfyUITimeoutError,
+            FakeSession(
+                post_response=submit_response(),
+                history_responses=[history_response()],
+                view_response=requests.Timeout(),
+            ),
+        )
+
+    def test_download_connection_error_maps_to_unavailable(self):
+        self.assert_generation_raises(
+            ComfyUIUnavailableError,
+            FakeSession(
+                post_response=submit_response(),
+                history_responses=[history_response()],
+                view_response=requests.ConnectionError(),
+            ),
+        )
+
+    def test_download_server_error_maps_to_unavailable(self):
+        self.assert_generation_raises(
+            ComfyUIUnavailableError,
+            FakeSession(
+                post_response=submit_response(),
+                history_responses=[history_response()],
+                view_response=FakeHTTPResponse(status_code=500),
+            ),
+        )
+
+    def test_download_unexpected_status_maps_to_generation_error(self):
+        self.assert_generation_raises(
+            ComfyUIGenerationError,
+            FakeSession(
+                post_response=submit_response(),
+                history_responses=[history_response()],
+                view_response=FakeHTTPResponse(status_code=400),
+            ),
+        )
+
+    def test_download_invalid_content_length_is_rejected(self):
+        self.assert_generation_raises(
+            ComfyUIInvalidOutputError,
+            FakeSession(
+                post_response=submit_response(),
+                history_responses=[history_response()],
+                view_response=FakeHTTPResponse(
+                    content=b"abc",
+                    headers={
+                        "Content-Type": "image/png",
+                        "Content-Length": "not-a-number",
+                    },
+                ),
+            ),
+        )
+
+    def test_download_skips_empty_chunks(self):
+        image_data = image_bytes(size=(512, 512))
+        response = MagicMock()
+        response.status_code = 200
+        response.headers = {
+            "Content-Type": "image/png",
+            "Content-Length": str(len(image_data)),
+        }
+        response.iter_content.return_value = iter([b"", image_data])
+        session = MagicMock()
+        session.get.return_value = response
+        client = self.make_client(session)
+
+        generated = client._download(
+            "memora_00001_.png",
+            "",
+            client._clock() + 10,
+            (512, 512),
+        )
+
+        self.assertTrue(generated.data)
+        response.close.assert_called_once()
+
+    def test_download_oversized_stream_is_rejected(self):
+        response = FakeHTTPResponse(
+            content=b"x" * 11,
+            headers={"Content-Type": "image/png"},
+        )
+        session = FakeSession(
+            post_response=submit_response(),
+            history_responses=[history_response()],
+            view_response=response,
+        )
+
+        with patch.object(comfyui, "MAX_DOWNLOAD_BYTES", 10):
+            self.assert_generation_raises(ComfyUIInvalidOutputError, session)
+
+    def test_download_stream_timeout_maps_to_timeout(self):
+        response = MagicMock()
+        response.status_code = 200
+        response.headers = {"Content-Type": "image/png"}
+
+        def stream():
+            yield b"x"
+            raise requests.Timeout()
+
+        response.iter_content.side_effect = lambda **kwargs: stream()
+        session = MagicMock()
+        session.get.return_value = response
+        client = self.make_client(session)
+
+        with self.assertRaises(ComfyUITimeoutError):
+            client._download(
+                "memora_00001_.png",
+                "",
+                client._clock() + 10,
+                (512, 512),
+            )
+
+    def test_download_stream_request_error_maps_to_unavailable(self):
+        response = MagicMock()
+        response.status_code = 200
+        response.headers = {"Content-Type": "image/png"}
+
+        def stream():
+            yield b"x"
+            raise requests.ConnectionError()
+
+        response.iter_content.side_effect = lambda **kwargs: stream()
+        session = MagicMock()
+        session.get.return_value = response
+        client = self.make_client(session)
+
+        with self.assertRaises(ComfyUIUnavailableError):
+            client._download(
+                "memora_00001_.png",
+                "",
+                client._clock() + 10,
+                (512, 512),
+            )
+
+
+class ComfyUIValidationTests(SimpleTestCase):
+    def make_client(self, **overrides):
+        options = {
+            "base_url": "http://127.0.0.1:8188",
+            "workflow_path": (
+                settings.BASE_DIR
+                / "apps/media_library/workflows/stable_diffusion_1_5_text_to_image.json"
+            ),
+            "checkpoint": "test-model.safetensors",
+            "session": MagicMock(),
+        }
+        options.update(overrides)
+        return ComfyUIClient(**options)
+
+    def test_invalid_base_url_is_a_configuration_error(self):
+        with self.assertRaises(ComfyUIConfigurationError):
+            ComfyUIClient(base_url="ftp://example.com")
+
+    def test_output_reference_must_be_an_output(self):
+        with self.assertRaises(ComfyUIInvalidOutputError):
+            comfyui._validate_output_reference(
+                {"type": "temp", "filename": "image.png"},
+            )
+
+    def test_output_reference_accepts_a_null_subfolder(self):
+        self.assertEqual(
+            comfyui._validate_output_reference(
+                {"type": "output", "filename": "image.png", "subfolder": None},
+            ),
+            ("image.png", ""),
+        )
+
+    def test_output_reference_rejects_a_non_string_subfolder(self):
+        with self.assertRaises(ComfyUIInvalidOutputError):
+            comfyui._validate_output_reference(
+                {"type": "output", "filename": "image.png", "subfolder": 3},
+            )
+
+    def test_output_reference_rejects_unsafe_subfolder_parts(self):
+        with self.assertRaises(ComfyUIInvalidOutputError):
+            comfyui._validate_output_reference(
+                {
+                    "type": "output",
+                    "filename": "image.png",
+                    "subfolder": "safe/../unsafe",
+                },
+            )
+
+    def test_pick_output_rejects_a_missing_outputs_mapping(self):
+        with self.assertRaises(ComfyUIInvalidOutputError):
+            comfyui._pick_output_image({"outputs": []})
+
+    def test_pick_output_skips_malformed_nodes(self):
+        with self.assertRaises(ComfyUIInvalidOutputError):
+            comfyui._pick_output_image({"outputs": {"1": "not-a-mapping"}})
+
+    def test_pick_output_skips_nodes_without_an_images_list(self):
+        with self.assertRaises(ComfyUIInvalidOutputError):
+            comfyui._pick_output_image({"outputs": {"1": {"images": "bad"}}})
+
+    def test_pick_output_skips_non_mapping_image_items(self):
+        self.assertEqual(
+            comfyui._pick_output_image(
+                {
+                    "outputs": {
+                        "1": {
+                            "images": [
+                                "not-a-mapping",
+                                {"type": "output", "filename": "image.png"},
+                            ]
+                        }
+                    }
+                }
+            ),
+            ("image.png", ""),
+        )
+
+    def test_sanitize_rejects_empty_data(self):
+        with self.assertRaises(ComfyUIInvalidOutputError):
+            comfyui._sanitize_image(b"", "image/png", (8, 8))
+
+    def test_sanitize_rejects_unsupported_formats(self):
+        buffer = BytesIO()
+        Image.new("RGB", (8, 8)).save(buffer, format="GIF")
+
+        with self.assertRaises(ComfyUIInvalidOutputError):
+            comfyui._sanitize_image(buffer.getvalue(), "image/gif", (8, 8))
+
+    def test_sanitize_rejects_animated_images(self):
+        first = Image.new("RGB", (8, 8), (255, 0, 0))
+        second = Image.new("RGB", (8, 8), (0, 255, 0))
+        buffer = BytesIO()
+        first.save(
+            buffer,
+            format="PNG",
+            save_all=True,
+            append_images=[second],
+            duration=100,
+            loop=0,
+        )
+
+        with self.assertRaises(ComfyUIInvalidOutputError):
+            comfyui._sanitize_image(buffer.getvalue(), "image/png", (8, 8))
+
+    def test_sanitize_converts_non_rgb_modes(self):
+        buffer = BytesIO()
+        Image.new("P", (8, 8)).save(buffer, format="PNG")
+
+        sanitized = comfyui._sanitize_image(
+            buffer.getvalue(),
+            "image/png",
+            (8, 8),
+        )
+
+        with Image.open(BytesIO(sanitized)) as image:
+            self.assertEqual(image.mode, "RGB")
+
+    def test_sanitize_rejects_an_oversized_result(self):
+        with patch.object(comfyui, "MAX_DOWNLOAD_BYTES", 1):
+            with self.assertRaises(ComfyUIInvalidOutputError):
+                comfyui._sanitize_image(
+                    image_bytes(size=(8, 8)),
+                    "image/png",
+                    (8, 8),
+                )
+
+    def test_json_rejects_an_invalid_payload(self):
+        client = self.make_client()
+
+        with self.assertRaises(ComfyUIInvalidOutputError):
+            client._json(FakeHTTPResponse(json_error=ValueError("bad json")))
+
+    def test_unreadable_workflow_is_a_configuration_error(self):
+        with tempfile.TemporaryDirectory() as directory:
+            client = self.make_client(
+                workflow_path=Path(directory) / "missing.json",
+            )
+
+            with self.assertRaises(ComfyUIConfigurationError):
+                client._build_workflow(
+                    prompt="A garden",
+                    width=512,
+                    height=512,
+                    steps=10,
+                    seed=1,
+                )
+
+    def test_invalid_workflow_template_is_a_configuration_error(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workflow_path = Path(directory) / "workflow.json"
+            workflow_path.write_text("[]", encoding="utf-8")
+            client = self.make_client(workflow_path=workflow_path)
+
+            with self.assertRaises(ComfyUIConfigurationError):
+                client._build_workflow(
+                    prompt="A garden",
+                    width=512,
+                    height=512,
+                    steps=10,
+                    seed=1,
+                )
+
+    def test_workflow_placeholders_must_appear_exactly_once(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workflow_path = Path(directory) / "workflow.json"
+            workflow_path.write_text(
+                '{"node": {"text": "__PROMPT__"}}',
+                encoding="utf-8",
+            )
+            client = self.make_client(workflow_path=workflow_path)
+
+            with self.assertRaises(ComfyUIConfigurationError):
+                client._build_workflow(
+                    prompt="A garden",
+                    width=512,
+                    height=512,
+                    steps=10,
+                    seed=1,
+                )
 
 
 class StubComfyUIClient:

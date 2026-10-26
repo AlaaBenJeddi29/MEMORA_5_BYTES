@@ -1,0 +1,86 @@
+name: Django tests and coverage
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  django-tests:
+    name: Django tests (Python 3.11)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      PYTHONUNBUFFERED: "1"
+      DJANGO_SETTINGS_MODULE: config.settings
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # requirements.txt is fully pinned. --no-deps keeps pip from resolving
+          # face_recognition's distribution dependency on "dlib" to the
+          # source-only dlib package; dlib-bin provides the same Python module
+          # from a precompiled manylinux wheel on the Ubuntu runner.
+          python -m pip install --no-deps --prefer-binary -r requirements.txt
+          # Do not run `pip check` here: face_recognition declares a
+          # distribution-level dependency on "dlib", while dlib-bin supplies
+          # the importable dlib module from a prebuilt wheel.
+          python - <<'PY'
+          import dlib
+          import face_recognition
+          import numpy
+
+          print(f"dlib={dlib.__version__} numpy={numpy.__version__}")
+          print("face_recognition import OK")
+          PY
+
+      - name: Run Django system checks
+        run: python manage.py check
+
+      - name: Run tests with coverage
+        run: |
+          python -m coverage erase
+          python -m coverage run --rcfile=.coveragerc manage.py test --verbosity 2
+
+      - name: Enforce 60% minimum coverage
+        run: python -m coverage report --rcfile=.coveragerc --fail-under=60
+
+      - name: Generate coverage XML
+        if: always()
+        run: python -m coverage xml --rcfile=.coveragerc
+
+      - name: Generate coverage HTML
+        if: always()
+        run: python -m coverage html --rcfile=.coveragerc
+
+      - name: Upload coverage XML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload coverage HTML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-html
+          path: htmlcov/
+          if-no-files-found: warn
+          retention-days: 14

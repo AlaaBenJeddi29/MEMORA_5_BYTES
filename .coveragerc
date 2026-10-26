@@ -1,0 +1,28 @@
+[run]
+source =
+    apps
+    config
+branch = True
+
+omit =
+    */migrations/*
+    */tests.py
+    */tests_*.py
+    config/asgi.py
+    config/wsgi.py
+
+[report]
+show_missing = True
+skip_empty = True
+precision = 1
+sort = Cover
+
+exclude_lines =
+    pragma: no cover
+    raise NotImplementedError
+
+[html]
+directory = htmlcov
+
+[xml]
+output = coverage.xml
