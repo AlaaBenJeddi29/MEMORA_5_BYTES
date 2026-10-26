@@ -9,7 +9,14 @@ import { PageHeader } from '../../../components/PageHeader'
 import { useDocumentTitle } from '../../../hooks/useDocumentTitle'
 import { journalApi } from '../../../services/journal'
 import { normalizeApiError } from '../../../services/errors'
-import type { JournalEntry, JournalPage, JournalSearchParams, AdvancedSearchParams, AdvancedSearchResult } from '../../../types/journal'
+import type {
+  JournalEntry,
+  JournalEntryInput,
+  JournalPage,
+  JournalSearchParams,
+  AdvancedSearchParams,
+  AdvancedSearchResult,
+} from '../../../types/journal'
 import { JournalEntryForm } from '../components/JournalEntryForm'
 import { JournalEntryList } from '../components/JournalEntryList'
 import { JournalSearch } from '../components/JournalSearch'
@@ -33,9 +40,22 @@ export function JournalListPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [editingEntry, setEditingEntry] = useState<JournalEntry | null>(null)
-  const [showForm, setShowForm] = useState(false)
-  const [searchParams, setSearchParams] = useState<JournalSearchParams | AdvancedSearchParams>({})
+  const [showForm, setShowForm] = useState(() => Boolean(routeState?.prefillText))
+  const [prefill, setPrefill] = useState<Partial<JournalEntryInput> | null>(() =>
+    routeState?.prefillText
+      ? { title: routeState.prefillTitle ?? '', text: routeState.prefillText }
+      : null,
+  )
+  const [filters, setFilters] = useState<JournalSearchParams | AdvancedSearchParams>({})
   const [advancedResult, setAdvancedResult] = useState<AdvancedSearchResult | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
+  const [openingEntry, setOpeningEntry] = useState(false)
+
+  const consumedEditRef = useRef<string | null>(null)
+
+  const wantsNew = urlParams.get('new') === '1'
+  const editIdParam = urlParams.get('edit')
+  const hasActiveFilters = Object.values(filters).some((value) => value !== undefined && value !== false)
 
   // Load entries on mount and whenever the page, filters or explicit reload change.
   useEffect(() => {
@@ -45,30 +65,25 @@ export function JournalListPage() {
       setLoading(true)
       setError(null)
       try {
-        let result
-        const hasActiveFilters = Object.values(searchParams).some((v) => v !== undefined && v !== false)
-        
-        if (hasActiveFilters) {
-          const params = searchParams as JournalSearchParams | AdvancedSearchParams
-          if ('isAdvanced' in params && params.isAdvanced === true) {
-            const advancedResult = await journalApi.advancedSearch(params as AdvancedSearchParams)
-            setAdvancedResult(advancedResult)
-            // Build a fake JournalPage from the result
-            result = {
-              count: advancedResult.total,
-              next: null,
-              previous: null,
-              results: advancedResult.results,
-            }
-          } else {
-            setAdvancedResult(null)
-            result = await journalApi.search(params as JournalSearchParams)
+        let result: JournalPage
+        if (!hasActiveFilters) {
+          setAdvancedResult(null)
+          result = await journalApi.list(currentPage)
+        } else if ('isAdvanced' in filters && filters.isAdvanced === true) {
+          const advanced = await journalApi.advancedSearch(filters as AdvancedSearchParams)
+          setAdvancedResult(advanced)
+          result = {
+            count: advanced.total,
+            next: null,
+            previous: null,
+            results: advanced.results,
           }
         } else {
           setAdvancedResult(null)
-          result = await journalApi.list(currentPage)
+          const params = filters as JournalSearchParams
+          result = await journalApi.search({ ...params, page: currentPage })
         }
-        setEntries(result)
+        if (active) setEntries(result)
       } catch (err) {
         if (!active) return
         const normalized = normalizeApiError(err)
@@ -177,7 +192,12 @@ export function JournalListPage() {
   )
 
   const handleSearch = useCallback((params: JournalSearchParams | AdvancedSearchParams) => {
-    setSearchParams(params)
+    setFilters(params)
+    setCurrentPage(1)
+  }, [])
+
+  const handleClearFilters = useCallback(() => {
+    setFilters({})
     setCurrentPage(1)
   }, [])
 
@@ -262,9 +282,6 @@ export function JournalListPage() {
           </div>
         </section>
       )}
-
-      <JournalSearch onSearch={handleSearch} isLoading={loading} />
-
       <JournalEntryList
         page={entries}
         onEdit={handleEdit}

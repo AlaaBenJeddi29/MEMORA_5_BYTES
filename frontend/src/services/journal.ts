@@ -36,8 +36,6 @@ export const journalApi = {
   list: (page = 1, pageSize?: number) =>
     apiRequest<JournalPage>(buildListUrl(page, pageSize)),
 
-  listAll: listAllEntries,
-
   get: (id: number) =>
     apiRequest<JournalEntry>(`${BASE}${id}/`),
 
@@ -52,6 +50,8 @@ export const journalApi = {
 
   search: (params: JournalSearchParams) =>
     apiRequest<JournalPage>(buildSearchUrl(params)),
+
+  listAll: listAllEntries,
 
   advancedSearch: (params: AdvancedSearchParams) =>
     apiRequest<AdvancedSearchResult>(`${BASE}advanced-search/`, { method: 'POST', body: params }),
