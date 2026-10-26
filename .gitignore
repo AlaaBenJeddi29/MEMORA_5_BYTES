@@ -12,6 +12,9 @@ node_modules/
 dist/
 build/
 .coverage
+.coverage.*
+htmlcov/
+coverage.xml
 .pytest_cache/
 .vscode/
 .qoder/
