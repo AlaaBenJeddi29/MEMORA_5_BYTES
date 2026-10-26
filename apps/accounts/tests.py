@@ -348,9 +348,8 @@ class EmailVerificationTests(APITestCase):
     def test_valid_link_activates_the_account(self):
         response = self.client.get(self.verification_url())
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertTemplateUsed(response, "accounts/verify_email.html")
-        self.assertContains(response, "Votre email est vérifié")
+        self.assertEqual(response.status_code, status.HTTP_302_FOUND)
+        self.assertEqual(response["Location"], "/login?verified=1")
         self.pending.refresh_from_db()
         self.assertTrue(self.pending.is_active)
         self.assertTrue(self.pending.email_verified)
@@ -369,10 +368,8 @@ class EmailVerificationTests(APITestCase):
     def test_invalid_token_does_not_activate_the_account(self):
         response = self.client.get(self.verification_url(token="not-a-token"))
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertContains(
-            response, "n’est pas valable", status_code=status.HTTP_400_BAD_REQUEST
-        )
+        self.assertEqual(response.status_code, status.HTTP_302_FOUND)
+        self.assertEqual(response["Location"], "/login?verify=invalid")
         self.pending.refresh_from_db()
         self.assertFalse(self.pending.is_active)
         self.assertFalse(self.pending.email_verified)
@@ -385,7 +382,18 @@ class EmailVerificationTests(APITestCase):
 
         response = self.client.get(url)
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.status_code, status.HTTP_302_FOUND)
+        self.assertEqual(response["Location"], "/login?verify=invalid")
+
+    def test_stale_link_for_an_already_verified_account_goes_to_login(self):
+        self.pending.email_verified = True
+        self.pending.is_active = True
+        self.pending.save(update_fields=["email_verified", "is_active"])
+
+        response = self.client.get(self.verification_url(token="stale-token"))
+
+        self.assertEqual(response.status_code, status.HTTP_302_FOUND)
+        self.assertEqual(response["Location"], "/login?verified=1")
 
     def test_resend_sends_a_new_link_for_an_unverified_account(self):
         response = self.client.post(
@@ -487,6 +495,18 @@ class LoginTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("Invalid username or password.", str(response.data))
+
+    def test_login_accepts_the_email_address(self):
+        response = self.login(username=self.user.email)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["username"], "alice")
+
+    def test_email_login_is_case_insensitive(self):
+        response = self.login(username=self.user.email.upper())
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["username"], "alice")
 
     def test_unverified_account_is_told_to_verify_its_email(self):
         make_user(
@@ -975,6 +995,12 @@ class HtmlLoginTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_302_FOUND)
         self.assertEqual(response["Location"], "/people/")
+
+    def test_html_login_accepts_the_email_address(self):
+        response = self.login(username=self.user.email)
+
+        self.assertEqual(response.status_code, status.HTTP_302_FOUND)
+        self.assertEqual(response["Location"], settings.LOGIN_REDIRECT_URL)
 
     def test_wrong_password_shows_a_friendly_error(self):
         response = self.login(password="wrong-password")

@@ -27,7 +27,7 @@ from django.contrib.auth import login as auth_login
 from django.contrib.auth import logout as auth_logout
 from django.contrib.auth import views as auth_views
 from django.contrib.auth.tokens import default_token_generator
-from django.shortcuts import get_object_or_404, redirect, render
+from django.shortcuts import get_object_or_404, redirect
 from django.utils.decorators import method_decorator
 from django.utils.encoding import force_str
 from django.utils.http import urlsafe_base64_decode
@@ -214,16 +214,16 @@ def verify_email(request, uidb64, token):
             user.is_active = True
             user.save(update_fields=["email_verified", "is_active"])
         logger.info("Email verified: user_id=%s", user.pk)
-        context = {"verified": True, "username": user.username}
-        return render(request, "accounts/verify_email.html", context)
+        # Verification links land on the SPA's own sign-in page.
+        return redirect("/login?verified=1")
+
+    if user is not None and user.email_verified and user.is_active:
+        # Stale links (for example after a password reset) still describe an
+        # account that is already verified; send the user to sign-in.
+        return redirect("/login?verified=1")
 
     logger.warning("Invalid email verification link used.")
-    return render(
-        request,
-        "accounts/verify_email.html",
-        {"verified": False},
-        status=status.HTTP_400_BAD_REQUEST,
-    )
+    return redirect("/login?verify=invalid")
 
 
 class SafePasswordResetView(auth_views.PasswordResetView):
