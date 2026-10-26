@@ -1131,4 +1131,241 @@ describe('MediaLibraryPage', () => {
     expect(await screen.findByText('Weekend trips')).toBeTruthy()
     expect(calls).toBe(2)
   })
+
+  it('merges media and journal memories into a chronological timeline', async () => {
+    installFetch(baseHandler())
+    renderPage()
+    await screen.findByText('Original photo')
+
+    fireEvent.click(screen.getByRole('button', { name: /Timeline/ }))
+
+    expect(
+      await screen.findByRole('heading', { name: 'Memory timeline' }),
+    ).toBeTruthy()
+    expect(await screen.findByText('3 memories shown')).toBeTruthy()
+    expect(
+      screen.getByRole('button', {
+        name: 'Open journal memory Rainy afternoon',
+      }),
+    ).toBeTruthy()
+    expect(
+      screen.getByRole('button', { name: 'Open AI illustration 12 details' }),
+    ).toBeTruthy()
+    expect(
+      screen.getByRole('button', { name: 'Open Original photo 11 details' }),
+    ).toBeTruthy()
+    expect(screen.getAllByText('AI illustration').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Original photo').length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('link', { name: /Summary #3/ })).toHaveLength(2)
+  })
+
+  it('filters the timeline by type and searches existing metadata', async () => {
+    installFetch(baseHandler())
+    renderPage()
+    await screen.findByText('Original photo')
+    fireEvent.click(screen.getByRole('button', { name: /Timeline/ }))
+    await screen.findByText('3 memories shown')
+
+    fireEvent.change(screen.getByLabelText('Memory type'), {
+      target: { value: 'journal' },
+    })
+    expect(await screen.findByText('1 memory shown')).toBeTruthy()
+    expect(
+      screen.queryByRole('button', { name: 'Open Original photo 11 details' }),
+    ).toBeNull()
+
+    fireEvent.change(screen.getByLabelText('Memory type'), {
+      target: { value: 'all' },
+    })
+    fireEvent.change(screen.getByLabelText('Search memories'), {
+      target: { value: 'comfyui' },
+    })
+    expect(await screen.findByText('1 memory shown')).toBeTruthy()
+    expect(
+      screen.getByRole('button', { name: 'Open AI illustration 12 details' }),
+    ).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('Search memories'), {
+      target: { value: 'no-such-memory' },
+    })
+    expect(
+      await screen.findByText('No memories match these filters'),
+    ).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset filters' }))
+    expect(await screen.findByText('3 memories shown')).toBeTruthy()
+  })
+
+  it('rejects an inverted timeline date range until the dates are cleared', async () => {
+    installFetch(baseHandler())
+    renderPage()
+    await screen.findByText('Original photo')
+    fireEvent.click(screen.getByRole('button', { name: /Timeline/ }))
+    await screen.findByText('3 memories shown')
+
+    fireEvent.change(screen.getByLabelText('From date'), {
+      target: { value: '2026-10-25' },
+    })
+    fireEvent.change(screen.getByLabelText('To date'), {
+      target: { value: '2026-10-01' },
+    })
+
+    expect(await screen.findByText('Check the date range')).toBeTruthy()
+    expect(screen.getByText(/start date is after the end date/i)).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear dates' }))
+    expect(await screen.findByText('3 memories shown')).toBeTruthy()
+  })
+
+  it('reuses the shared favorites state inside the timeline', async () => {
+    let serverMedia: MediaItem[] = [ORIGINAL, GENERATED]
+    const fetchMock = installFetch((url, init) => {
+      const method = init?.method ?? 'GET'
+      if (url.endsWith('/api/media/11/favorite/') && method === 'PATCH') {
+        const body = JSON.parse(String(init?.body)) as { is_favorite: boolean }
+        serverMedia = serverMedia.map((item) =>
+          item.id === 11 ? { ...item, is_favorite: body.is_favorite } : item,
+        )
+        return jsonResponse(serverMedia.find((item) => item.id === 11)!)
+      }
+      if (url.endsWith('/api/media/') && method === 'GET') {
+        return jsonResponse(serverMedia)
+      }
+      return baseHandler()(url, init)
+    })
+    renderPage()
+    await screen.findByText('Original photo')
+    fireEvent.click(screen.getByRole('button', { name: /Timeline/ }))
+    await screen.findByText('3 memories shown')
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Add Original photo 11 to favorites' }),
+    )
+    expect(await screen.findByText('Image #11 added to favorites.')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: /Favorites only/ }))
+    expect(await screen.findByText('1 memory shown')).toBeTruthy()
+    expect(
+      screen.queryByRole('button', {
+        name: 'Open journal memory Rainy afternoon',
+      }),
+    ).toBeNull()
+
+    const patchCall = fetchMock.mock.calls.find(
+      ([url, init]) =>
+        String(url).endsWith('/api/media/11/favorite/') &&
+        init?.method === 'PATCH',
+    )
+    expect(JSON.parse(String(patchCall?.[1]?.body))).toEqual({ is_favorite: true })
+  })
+
+  it('opens a journal memory and its linked media without leaving /app/media', async () => {
+    installFetch(baseHandler())
+    renderPage()
+    await screen.findByText('Original photo')
+    fireEvent.click(screen.getByRole('button', { name: /Timeline/ }))
+    await screen.findByText('3 memories shown')
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Open journal memory Rainy afternoon' }),
+    )
+    const dialog = await screen.findByRole('dialog')
+    expect(
+      within(dialog).getByRole('heading', { name: 'Rainy afternoon' }),
+    ).toBeTruthy()
+    expect(
+      within(dialog).getByText(
+        'Spent the afternoon reading by the window.',
+      ),
+    ).toBeTruthy()
+    expect(
+      within(dialog).getByText(
+        'A quiet afternoon reading by the window.',
+      ),
+    ).toBeTruthy()
+
+    fireEvent.click(
+      within(dialog).getByRole('button', {
+        name: 'Open AI illustration 12 from this memory',
+      }),
+    )
+    await waitFor(() =>
+      expect(
+        screen.queryByText('Spent the afternoon reading by the window.'),
+      ).toBeNull(),
+    )
+    const mediaDialog = await screen.findByRole('dialog')
+    expect(within(mediaDialog).getByText('AI illustration #12')).toBeTruthy()
+    expect(
+      within(mediaDialog).getByRole('link', { name: 'Rainy afternoon' }),
+    ).toBeTruthy()
+  })
+
+  it('scopes the timeline to an active collection and clears the scope', async () => {
+    installFetch(
+      baseHandler({
+        media: [{ ...ORIGINAL, collection_ids: [7] }, GENERATED],
+        collections: [TRIPS],
+      }),
+    )
+    renderPage()
+    await screen.findByText('Weekend trips')
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Open collection Weekend trips' }),
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Timeline/ }))
+
+    expect(await screen.findByText('1 memory shown')).toBeTruthy()
+    expect(
+      screen.queryByRole('button', { name: 'Open AI illustration 12 details' }),
+    ).toBeNull()
+    expect(
+      screen.queryByRole('button', {
+        name: 'Open journal memory Rainy afternoon',
+      }),
+    ).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'All memories' }))
+    expect(await screen.findByText('3 memories shown')).toBeTruthy()
+  })
+
+  it('keeps journal memories visible when media fails and retries media only', async () => {
+    let mediaCalls = 0
+    installFetch((url, init) => {
+      const method = init?.method ?? 'GET'
+      if (url.endsWith('/api/media/') && method === 'GET') {
+        mediaCalls += 1
+        if (mediaCalls === 1) {
+          return jsonResponse({ detail: 'Media are unavailable.' }, 503)
+        }
+        return jsonResponse([ORIGINAL, GENERATED])
+      }
+      return baseHandler()(url, init)
+    })
+    renderPage()
+    await screen.findByText('We couldn’t load your media')
+
+    fireEvent.click(screen.getByRole('button', { name: /Timeline/ }))
+
+    expect(
+      await screen.findByText('Some media couldn’t be loaded'),
+    ).toBeTruthy()
+    expect(screen.getByText('Media are unavailable.')).toBeTruthy()
+    expect(await screen.findByText('1 memory shown')).toBeTruthy()
+    expect(
+      screen.getByRole('button', {
+        name: 'Open journal memory Rainy afternoon',
+      }),
+    ).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reload media' }))
+    expect(
+      await screen.findByRole('button', {
+        name: 'Open Original photo 11 details',
+      }),
+    ).toBeTruthy()
+    expect(await screen.findByText('3 memories shown')).toBeTruthy()
+    expect(mediaCalls).toBe(2)
+  })
 })

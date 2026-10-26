@@ -29,6 +29,7 @@ import { GenerateImageForm } from '../components/GenerateImageForm'
 import { MediaCard } from '../components/MediaCard'
 import { MediaDetailDialog } from '../components/MediaDetailDialog'
 import { MediaSkeleton } from '../components/MediaSkeleton'
+import { MemoryTimeline } from '../components/MemoryTimeline'
 import { UploadForm } from '../components/UploadForm'
 import { EMPTY_ERRORS, flattenFormErrors } from '../mediaHelpers'
 import '../media-library.css'
@@ -52,6 +53,7 @@ function errorMessage(error: unknown, fallback: string): string {
 type LoadState = 'loading' | 'ready' | 'error'
 type TypeFilter = 'all' | MediaType
 type SortOrder = 'newest' | 'oldest'
+type MediaView = 'gallery' | 'timeline'
 type Notice = { tone: 'success' | 'error'; message: string }
 type CollectionDialogState =
   | { mode: 'create' }
@@ -90,6 +92,7 @@ export function MediaLibraryPage() {
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
   const [query, setQuery] = useState('')
   const [sortOrder, setSortOrder] = useState<SortOrder>('newest')
+  const [viewMode, setViewMode] = useState<MediaView>('gallery')
 
   const [selected, setSelected] = useState<MediaItem | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<MediaItem | null>(null)
@@ -764,7 +767,64 @@ export function MediaLibraryPage() {
         onDelete={requestDeleteCollection}
       />
 
-      <section className="media-gallery" aria-labelledby="media-gallery-heading">
+      <div className="media-view-switch" role="group" aria-label="Archive view">
+        <button
+          type="button"
+          className={
+            viewMode === 'gallery'
+              ? 'media-view-switch__button is-active'
+              : 'media-view-switch__button'
+          }
+          aria-pressed={viewMode === 'gallery'}
+          onClick={() => setViewMode('gallery')}
+        >
+          <Icon name="grid" size={15} />
+          Gallery
+          <span className="media-view-switch__count">{items.length}</span>
+        </button>
+        <button
+          type="button"
+          className={
+            viewMode === 'timeline'
+              ? 'media-view-switch__button is-active'
+              : 'media-view-switch__button'
+          }
+          aria-pressed={viewMode === 'timeline'}
+          onClick={() => setViewMode('timeline')}
+        >
+          <Icon name="list" size={15} />
+          Timeline
+          <span className="media-view-switch__count">
+            {items.length + journalEntries.length}
+          </span>
+        </button>
+      </div>
+
+      {viewMode === 'timeline' ? (
+        <MemoryTimeline
+          media={items}
+          journalEntries={journalEntries}
+          summaries={summaries}
+          mediaLoading={loadState === 'loading'}
+          mediaFailed={loadState === 'error'}
+          mediaErrorMessages={loadErrorMessages}
+          journalLoading={journalEntriesLoading}
+          journalError={journalEntriesError}
+          summariesError={summariesError}
+          activeCollection={activeCollection}
+          favoritesOnly={favoritesOnly}
+          favoriteCount={activeFavoriteCount}
+          favoriteBusyIds={favoriteBusyIds}
+          onSetFavoritesOnly={setFavoritesOnly}
+          onToggleFavorite={(item) => void toggleFavorite(item)}
+          onOpenMedia={openMedia}
+          onClearCollection={() => setActiveCollectionId(null)}
+          onRetryMedia={() => setReloadKey((key) => key + 1)}
+          onRetryJournal={() => setJournalReloadKey((key) => key + 1)}
+          onRetrySummaries={() => setSummaryReloadKey((key) => key + 1)}
+        />
+      ) : (
+        <section className="media-gallery" aria-labelledby="media-gallery-heading">
         <div className="media-gallery-head">
           <div>
             {activeCollection ? (
@@ -1010,7 +1070,8 @@ export function MediaLibraryPage() {
             ))}
           </ul>
         )}
-      </section>
+        </section>
+      )}
 
       <section className="media-studio" aria-labelledby="media-studio-heading">
         <header className="media-studio__head">
