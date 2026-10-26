@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
 import { Alert } from '../../../components/Alert'
@@ -93,6 +93,13 @@ export function MediaLibraryPage() {
   const [query, setQuery] = useState('')
   const [sortOrder, setSortOrder] = useState<SortOrder>('newest')
   const [viewMode, setViewMode] = useState<MediaView>('gallery')
+  const [timelineFocusEntryId, setTimelineFocusEntryId] = useState<number | null>(
+    null,
+  )
+
+  const clearTimelineFocus = useCallback(() => {
+    setTimelineFocusEntryId(null)
+  }, [])
 
   const [selected, setSelected] = useState<MediaItem | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<MediaItem | null>(null)
@@ -326,6 +333,19 @@ export function MediaLibraryPage() {
 
   function addMedia(media: MediaItem) {
     setItems((current) => [media, ...current.filter((item) => item.id !== media.id)])
+    // Keep the already-loaded journal entry in sync with the server's new
+    // photos link, so the timeline shows the artwork without a refetch.
+    setJournalEntries((current) =>
+      current.map((entry) => {
+        const linked =
+          media.journal_entry_id === entry.id ||
+          media.journal_entries.some((ref) => ref.id === entry.id)
+        if (!linked || entry.photos.includes(media.id)) {
+          return entry
+        }
+        return { ...entry, photos: [...entry.photos, media.id] }
+      }),
+    )
     setLoadState('ready')
     setLoadErrors(EMPTY_ERRORS)
     setFavoritesOnly(false)
@@ -357,6 +377,29 @@ export function MediaLibraryPage() {
   function closeDetail() {
     setSelected(null)
     setMembershipError(null)
+  }
+
+  /** Opens the artwork's source journal memory inside the Feature 2 timeline. */
+  function showSourceMemory(media: MediaItem) {
+    const summaryEntryId =
+      media.summary_id !== null
+        ? summaries.find((summary) => summary.id === media.summary_id)
+            ?.journal_entry_id ?? null
+        : null
+    const entryId = media.journal_entry_id ?? summaryEntryId
+    const entry = journalEntries.find((item) => item.id === entryId)
+
+    if (!entry) {
+      // The link exists on the server but the journal list is unavailable here;
+      // fall back to the owned media details, which show the stored provenance.
+      openMedia(media)
+      return
+    }
+
+    setSelected(null)
+    setMembershipError(null)
+    setTimelineFocusEntryId(entry.id)
+    setViewMode('timeline')
   }
 
   function requestDelete(media: MediaItem) {
@@ -822,6 +865,8 @@ export function MediaLibraryPage() {
           onRetryMedia={() => setReloadKey((key) => key + 1)}
           onRetryJournal={() => setJournalReloadKey((key) => key + 1)}
           onRetrySummaries={() => setSummaryReloadKey((key) => key + 1)}
+          focusJournalEntryId={timelineFocusEntryId}
+          onFocusHandled={clearTimelineFocus}
         />
       ) : (
         <section className="media-gallery" aria-labelledby="media-gallery-heading">
@@ -1130,10 +1175,10 @@ export function MediaLibraryPage() {
                 <Icon name="sparkles" size={20} />
               </span>
               <div className="media-panel__heading">
-                <h3 id="media-generate-heading">Generate an illustration</h3>
+                <h3 id="media-generate-heading">Create art from a memory</h3>
                 <p>
-                  Describe a scene and render it with your local ComfyUI model.
-                  It can take a few minutes.
+                  Choose one of your journal memories or summaries, review the
+                  prompt, then render it with your local ComfyUI model.
                 </p>
               </div>
             </div>
@@ -1149,8 +1194,12 @@ export function MediaLibraryPage() {
               onReloadSummaries={() => setSummaryReloadKey((key) => key + 1)}
               initialJournalEntryId={initialJournalEntryId}
               initialSummaryId={initialSummaryId}
+              mediaItems={items}
+              favoriteBusyIds={favoriteBusyIds}
+              onToggleFavorite={(media) => void toggleFavorite(media)}
               onGenerated={addMedia}
               onView={openMedia}
+              onShowSource={showSourceMemory}
             />
           </section>
         </div>

@@ -29,6 +29,12 @@ export const GENERATION_SIZES = [
   { value: '768x512', label: 'Landscape · 768 × 512', width: 768, height: 512 },
 ] as const
 
+/** Mirrors config/settings.py; the server re-validates every value. */
+export const GENERATION_DEFAULT_STEPS = 20
+export const GENERATION_MIN_STEPS = 1
+export const GENERATION_MAX_STEPS = 30
+export const GENERATION_MAX_SEED = 2 ** 63 - 1
+
 export const EMPTY_ERRORS: NormalizedErrors = { fieldErrors: {}, formErrors: [] }
 
 export function flattenFormErrors(errors: NormalizedErrors): string[] {

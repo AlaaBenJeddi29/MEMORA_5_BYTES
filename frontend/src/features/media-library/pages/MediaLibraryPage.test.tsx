@@ -676,6 +676,258 @@ describe('MediaLibraryPage', () => {
     expect(attempts).toBe(0)
   })
 
+  it('previews the selected journal memory and the prompt built from its recap', async () => {
+    installFetch(baseHandler())
+    const { container } = renderPage()
+
+    await screen.findByText('Original photo')
+
+    const journalSelect = (await screen.findByLabelText(
+      'Journal entry',
+    )) as HTMLSelectElement
+    await waitFor(() => expect(journalSelect.disabled).toBe(false))
+    fireEvent.change(journalSelect, { target: { value: '2' } })
+
+    expect(await screen.findByText('Journal memory')).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Rainy afternoon' })).toBeTruthy()
+    expect(
+      container
+        .querySelector('.media-source-preview time')
+        ?.getAttribute('datetime'),
+    ).toBe('2026-09-15T15:40:00Z')
+    expect(
+      screen.getByText('A quiet afternoon reading by the window.'),
+    ).toBeTruthy()
+    expect(screen.getByText('Built from the journal title and recap')).toBeTruthy()
+
+    const expectedPrompt =
+      'Illustrate this journal memory titled "Rainy afternoon". A quiet afternoon reading by the window.'
+    expect(screen.getByText(expectedPrompt)).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Use this prompt' }))
+    expect((screen.getByLabelText('Prompt') as HTMLTextAreaElement).value).toBe(
+      expectedPrompt,
+    )
+  })
+
+  it('shows a selected summary with its saved illustration prompt', async () => {
+    installFetch(baseHandler())
+    renderPage()
+
+    await screen.findByText('Original photo')
+
+    const summarySelect = (await screen.findByLabelText('Summary')) as HTMLSelectElement
+    await waitFor(() => expect(summarySelect.disabled).toBe(false))
+    fireEvent.change(summarySelect, { target: { value: '3' } })
+
+    expect(await screen.findByText('Summary memory')).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Summary #3' })).toBeTruthy()
+    expect(
+      screen.getByText(/From journal memory “Rainy afternoon”/),
+    ).toBeTruthy()
+    expect(
+      screen.getByText('Saved illustration prompt from Summary #3'),
+    ).toBeTruthy()
+    expect(screen.getByText('A rain-soaked window at dusk.')).toBeTruthy()
+    expect((screen.getByLabelText('Journal entry') as HTMLSelectElement).value).toBe(
+      '2',
+    )
+  })
+
+  it('sends a reviewed prompt with advanced steps and seed', async () => {
+    let body: Record<string, unknown> | null = null
+    installFetch((url, init) => {
+      if (url.endsWith('/api/media/generate/') && init?.method === 'POST') {
+        body = JSON.parse(String(init.body))
+        return jsonResponse(
+          { ...GENERATED, id: 61, prompt: 'A custom reviewed prompt' },
+          201,
+        )
+      }
+      return baseHandler()(url, init)
+    })
+    renderPage()
+
+    await screen.findByText('Original photo')
+
+    const summarySelect = (await screen.findByLabelText('Summary')) as HTMLSelectElement
+    await waitFor(() => expect(summarySelect.disabled).toBe(false))
+    fireEvent.change(summarySelect, { target: { value: '3' } })
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Use this prompt' }))
+    fireEvent.change(screen.getByLabelText('Prompt'), {
+      target: { value: 'A custom reviewed prompt' },
+    })
+    expect(
+      screen.getByText(/replaces the prompt saved with Summary #3/),
+    ).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('Steps'), { target: { value: '12' } })
+    fireEvent.change(screen.getByLabelText('Seed (optional)'), {
+      target: { value: '42' },
+    })
+    giveGenerationConsent()
+    fireEvent.click(screen.getByRole('button', { name: 'Generate illustration' }))
+
+    expect(await screen.findByText('AI-generated illustration')).toBeTruthy()
+    expect(body).toEqual({
+      summary_id: 3,
+      journal_entry_id: 2,
+      prompt: 'A custom reviewed prompt',
+      width: 512,
+      height: 512,
+      steps: 12,
+      seed: 42,
+    })
+  })
+
+  it('blocks invalid advanced options before calling the API', async () => {
+    let attempts = 0
+    installFetch((url, init) => {
+      if (url.endsWith('/api/media/generate/') && init?.method === 'POST') {
+        attempts += 1
+      }
+      return baseHandler()(url, init)
+    })
+    renderPage()
+
+    await screen.findByText('Original photo')
+
+    fireEvent.change(screen.getByLabelText('Steps'), { target: { value: '0' } })
+    fireEvent.change(screen.getByLabelText('Seed (optional)'), {
+      target: { value: '-4' },
+    })
+    giveGenerationConsent()
+    fireEvent.click(screen.getByRole('button', { name: 'Generate illustration' }))
+
+    expect(
+      await screen.findByText('Steps must be between 1 and 30.'),
+    ).toBeTruthy()
+    expect(
+      screen.getByText('Seed must be a whole number of 0 or more.'),
+    ).toBeTruthy()
+    expect(attempts).toBe(0)
+  })
+
+  it('explains a missing ComfyUI configuration and offers a retry', async () => {
+    installFetch((url, init) => {
+      if (url.endsWith('/api/media/generate/') && init?.method === 'POST') {
+        return jsonResponse(
+          { detail: 'Image generation is not configured.' },
+          503,
+        )
+      }
+      return baseHandler()(url, init)
+    })
+    renderPage()
+
+    await screen.findByText('Original photo')
+
+    fireEvent.change(screen.getByLabelText(/Prompt/), {
+      target: { value: 'A quiet lake at dawn' },
+    })
+    giveGenerationConsent()
+    fireEvent.click(screen.getByRole('button', { name: 'Generate illustration' }))
+
+    expect(await screen.findByText('ComfyUI isn’t configured')).toBeTruthy()
+    expect(screen.getByText(/COMFYUI_CHECKPOINT/)).toBeTruthy()
+    expect(
+      screen.getByText('Image generation is not configured.'),
+    ).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy()
+  })
+
+  it('favorites the new illustration from its result card', async () => {
+    const generated: MediaItem = {
+      ...GENERATED,
+      id: 62,
+      created_at: '2026-10-25T12:00:00Z',
+      updated_at: '2026-10-25T12:00:00Z',
+    }
+    const favorited: MediaItem = { ...generated, is_favorite: true }
+    installFetch((url, init) => {
+      if (url.endsWith('/api/media/generate/') && init?.method === 'POST') {
+        return jsonResponse(generated, 201)
+      }
+      if (url.endsWith('/api/media/62/favorite/') && init?.method === 'PATCH') {
+        return jsonResponse(favorited)
+      }
+      return baseHandler()(url, init)
+    })
+    renderPage()
+
+    await screen.findByText('Original photo')
+
+    const journalSelect = (await screen.findByLabelText(
+      'Journal entry',
+    )) as HTMLSelectElement
+    await waitFor(() => expect(journalSelect.disabled).toBe(false))
+    fireEvent.change(journalSelect, { target: { value: '2' } })
+    giveGenerationConsent()
+    fireEvent.click(screen.getByRole('button', { name: 'Generate illustration' }))
+
+    await screen.findByText('AI-generated illustration')
+    const resultSection = screen
+      .getByRole('heading', { name: 'AI-generated illustration' })
+      .closest('section') as HTMLElement
+
+    fireEvent.click(
+      within(resultSection).getByRole('button', {
+        name: 'Add AI illustration 62 to favorites',
+      }),
+    )
+
+    await waitFor(() =>
+      expect(
+        within(resultSection).getByRole('button', {
+          name: 'Remove AI illustration 62 from favorites',
+        }),
+      ).toBeTruthy(),
+    )
+  })
+
+  it('opens the source memory in the timeline with the new artwork linked', async () => {
+    const generated: MediaItem = {
+      ...GENERATED,
+      id: 63,
+      created_at: '2026-10-25T13:00:00Z',
+      updated_at: '2026-10-25T13:00:00Z',
+    }
+    installFetch((url, init) => {
+      if (url.endsWith('/api/media/generate/') && init?.method === 'POST') {
+        return jsonResponse(generated, 201)
+      }
+      return baseHandler()(url, init)
+    })
+    renderPage()
+
+    await screen.findByText('Original photo')
+
+    const journalSelect = (await screen.findByLabelText(
+      'Journal entry',
+    )) as HTMLSelectElement
+    await waitFor(() => expect(journalSelect.disabled).toBe(false))
+    fireEvent.change(journalSelect, { target: { value: '2' } })
+    giveGenerationConsent()
+    fireEvent.click(screen.getByRole('button', { name: 'Generate illustration' }))
+
+    await screen.findByText('AI-generated illustration')
+    fireEvent.click(screen.getByRole('button', { name: 'Open source memory' }))
+
+    expect(
+      await screen.findByRole('heading', { name: 'Memory timeline' }),
+    ).toBeTruthy()
+    const dialog = await screen.findByRole('dialog')
+    expect(
+      within(dialog).getByRole('heading', { name: 'Rainy afternoon' }),
+    ).toBeTruthy()
+    expect(
+      within(dialog).getByRole('button', {
+        name: 'Open AI illustration 63 from this memory',
+      }),
+    ).toBeTruthy()
+  })
+
   it('confirms before deleting and removes the card after 204', async () => {
     const fetchMock = installFetch((url, init) => {
       if (url.endsWith('/api/media/11/') && init?.method === 'DELETE') {

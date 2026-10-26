@@ -43,6 +43,9 @@ export interface MemoryTimelineProps {
   onRetryMedia: () => void
   onRetryJournal: () => void
   onRetrySummaries: () => void
+  /** Opens the memory dialog for this journal entry when the page links back. */
+  focusJournalEntryId?: number | null
+  onFocusHandled?: () => void
 }
 
 function TimelineSkeleton() {
@@ -93,6 +96,8 @@ export function MemoryTimeline({
   onRetryMedia,
   onRetryJournal,
   onRetrySummaries,
+  focusJournalEntryId = null,
+  onFocusHandled,
 }: MemoryTimelineProps) {
   const [kind, setKind] = useState<TimelineKind>('all')
   const [query, setQuery] = useState('')
@@ -101,6 +106,16 @@ export function MemoryTimeline({
   const [order, setOrder] = useState<TimelineOrder>('newest')
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const [memoryEntryId, setMemoryEntryId] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (focusJournalEntryId === null) {
+      return
+    }
+    if (journalEntries.some((entry) => entry.id === focusJournalEntryId)) {
+      setMemoryEntryId(focusJournalEntryId)
+    }
+    onFocusHandled?.()
+  }, [focusJournalEntryId, journalEntries, onFocusHandled])
 
   const activeCollectionId = activeCollection?.id ?? null
   const isLoading = journalLoading || (mediaLoading && media.length === 0)
