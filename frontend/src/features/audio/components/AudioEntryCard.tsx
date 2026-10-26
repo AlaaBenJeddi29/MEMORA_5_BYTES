@@ -15,6 +15,7 @@ import { useRef, useState } from 'react'
 import { StatusBadge } from '../../../components/StatusBadge'
 import { Button } from '../../../components/Button'
 import { ConfirmDialog } from '../../../components/ConfirmDialog'
+import { Icon } from '../../../components/Icon'
 import { AudioReplaceRecorder } from './AudioReplaceRecorder'
 import type { AudioEntryPatch } from '../services/audio'
 import type { AudioEntry } from '../types/audio'
@@ -25,19 +26,6 @@ interface AudioEntryCardProps {
   onUseTranscript?: (transcript: string) => void
   /** Resolves false when the API rejected the edit, keeping the draft on screen. */
   onUpdate: (id: number, patch: AudioEntryPatch) => Promise<boolean>
-}
-
-const SENTIMENT_EMOJI: Record<string, string> = {
-  positive: '😊',
-  negative: '😔',
-  neutral:  '😐',
-  mixed:    '🤔',
-}
-
-const LANGUAGE_FLAG: Record<string, string> = {
-  fr: '🇫🇷', en: '🇬🇧', ar: '🇸🇦', de: '🇩🇪', es: '🇪🇸',
-  it: '🇮🇹', pt: '🇵🇹', zh: '🇨🇳', ja: '🇯🇵', ru: '🇷🇺',
-  nl: '🇳🇱', pl: '🇵🇱', tr: '🇹🇷', ko: '🇰🇷', hi: '🇮🇳',
 }
 
 function formatDate(iso: string): string {
@@ -55,9 +43,6 @@ function formatDuration(secs: number | null): string {
 }
 
 export function AudioEntryCard({ entry, onDelete, onUseTranscript, onUpdate }: AudioEntryCardProps) {
-  const sentimentEmoji = entry.sentiment ? SENTIMENT_EMOJI[entry.sentiment] ?? '❓' : ''
-  const langFlag       = entry.language_code ? (LANGUAGE_FLAG[entry.language_code] ?? '🌐') : ''
-
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [replacing, setReplacing] = useState(false)
@@ -128,27 +113,36 @@ export function AudioEntryCard({ entry, onDelete, onUseTranscript, onUpdate }: A
 
   return (
     <article
-      className="audio-card"
+      className={`audio-card audio-card--${entry.status}`}
       aria-label={`Voice memo from ${formatDate(entry.created_at)}`}
     >
       {/* ── Header ── */}
       <div className="audio-card__header">
         <div className="audio-card__meta">
-          <time className="audio-card__date" dateTime={entry.created_at}>
-            {formatDate(entry.created_at)}
-          </time>
-          {entry.duration_seconds !== null && (
-            <span className="audio-card__duration">
-              ⏱ {formatDuration(entry.duration_seconds)}
-            </span>
-          )}
+          <span className="audio-card__mark" aria-hidden="true">
+            <Icon name="wave" size={18} />
+          </span>
+          <div className="audio-card__meta-text">
+            <time className="audio-card__date" dateTime={entry.created_at}>
+              {formatDate(entry.created_at)}
+            </time>
+            {entry.duration_seconds !== null && (
+              <span className="audio-card__duration">
+                <Icon name="clock" size={12} />
+                {formatDuration(entry.duration_seconds)}
+              </span>
+            )}
+          </div>
         </div>
         <StatusBadge
           status={
-            entry.status === 'succeeded' ? 'succeeded'
-            : entry.status === 'failed'  ? 'failed'
-            : entry.status === 'processing' ? 'processing'
-            : 'pending'
+            entry.status === 'succeeded'
+              ? 'succeeded'
+              : entry.status === 'failed'
+                ? 'failed'
+                : entry.status === 'processing'
+                  ? 'processing'
+                  : 'pending'
           }
         />
       </div>
@@ -156,7 +150,7 @@ export function AudioEntryCard({ entry, onDelete, onUseTranscript, onUpdate }: A
       {/* ── Audio player ── */}
       {entry.file && (
         <div className="audio-card__player">
-          {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+          <span className="audio-card__player-label">Recording</span>
           <audio controls src={entry.file} className="audio-card__audio" />
         </div>
       )}
@@ -164,7 +158,11 @@ export function AudioEntryCard({ entry, onDelete, onUseTranscript, onUpdate }: A
       {/* ── Processing indicator ── */}
       {(entry.status === 'pending' || entry.status === 'processing') && (
         <p className="audio-card__processing" role="status" aria-live="polite">
-          ⏳ Analysing your voice memo…
+          <span className="audio-card__pulse" aria-hidden="true" />
+          <span>
+            Analysing your voice memo…
+            <small>Transcript, language, sentiment and summary run on your server.</small>
+          </span>
         </p>
       )}
 
@@ -172,43 +170,55 @@ export function AudioEntryCard({ entry, onDelete, onUseTranscript, onUpdate }: A
            saved from the audio is null, but a hand-written one can be added) */}
       {(entry.status === 'succeeded' || editing) && (
         <div className="audio-card__results">
-
-          {/* ① Language */}
-          {entry.language_name && (
-            <div className="audio-card__result-row audio-card__result-row--language">
-              <span className="audio-card__result-icon" aria-hidden="true">{langFlag}</span>
-              <div>
-                <span className="audio-card__result-label">Language detected</span>
-                <span className="audio-card__result-value">{entry.language_name}</span>
-                {entry.language_code && (
-                  <span className="audio-card__result-badge">{entry.language_code.toUpperCase()}</span>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* ② Sentiment */}
-          {entry.sentiment && (
-            <div className={`audio-card__result-row audio-card__result-row--sentiment audio-card__result-row--${entry.sentiment}`}>
-              <span className="audio-card__result-icon" aria-hidden="true">{sentimentEmoji}</span>
-              <div>
-                <span className="audio-card__result-label">Sentiment</span>
-                <span className="audio-card__result-value">
-                  {entry.sentiment.charAt(0).toUpperCase() + entry.sentiment.slice(1)}
-                </span>
-                {entry.sentiment_score !== null && (
-                  <span className="audio-card__result-badge">
-                    {Math.round(entry.sentiment_score * 100)}% confidence
+          {(entry.language_name || entry.sentiment) && (
+            <div className="audio-card__signals">
+              {entry.language_name && (
+                <div className="audio-card__signal">
+                  <span className="audio-card__result-icon" aria-hidden="true">
+                    <Icon name="compass" size={16} />
                   </span>
-                )}
-              </div>
+                  <div>
+                    <span className="audio-card__result-label">Language detected</span>
+                    <span className="audio-card__result-value">{entry.language_name}</span>
+                    {entry.language_code && (
+                      <span className="audio-card__result-badge">
+                        {entry.language_code.toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {entry.sentiment && (
+                <div
+                  className={`audio-card__signal audio-card__signal--${entry.sentiment}`}
+                >
+                  <span className="audio-card__result-icon" aria-hidden="true">
+                    <Icon name="heart" size={16} />
+                  </span>
+                  <div>
+                    <span className="audio-card__result-label">Sentiment</span>
+                    <span className="audio-card__result-value">
+                      {entry.sentiment.charAt(0).toUpperCase() + entry.sentiment.slice(1)}
+                    </span>
+                    {entry.sentiment_score !== null && (
+                      <span className="audio-card__result-badge">
+                        {Math.round(entry.sentiment_score * 100)}% confidence
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
           {/* ③ Summary */}
           {(entry.summary || editing) && (
             <div className="audio-card__result-block">
-              <h3 className="audio-card__result-label">📋 Summary</h3>
+              <h3 className="audio-card__result-label">
+                <Icon name="sparkles" size={14} />
+                Summary
+              </h3>
               {editing ? (
                 <textarea
                   className="audio-card__edit-field"
@@ -226,7 +236,10 @@ export function AudioEntryCard({ entry, onDelete, onUseTranscript, onUpdate }: A
           {/* ④ Transcript */}
           {(entry.transcript || editing) && (
             <div className="audio-card__result-block">
-              <h3 className="audio-card__result-label">🎙 Transcript</h3>
+              <h3 className="audio-card__result-label">
+                <Icon name="mic" size={14} />
+                Transcript
+              </h3>
               {editing ? (
                 <textarea
                   className="audio-card__edit-field"
@@ -242,10 +255,13 @@ export function AudioEntryCard({ entry, onDelete, onUseTranscript, onUpdate }: A
                     <Button
                       variant="secondary"
                       size="sm"
+                      className="audio-card__use"
                       onClick={() => onUseTranscript(entry.transcript!)}
                       aria-label="Use transcript in journal entry"
                     >
-                      📝 Use in journal
+                      <Icon name="pen" size={14} />
+                      Use in journal
+                      <Icon name="arrowRight" size={14} />
                     </Button>
                   )}
                 </>
@@ -262,7 +278,10 @@ export function AudioEntryCard({ entry, onDelete, onUseTranscript, onUpdate }: A
 
       {/* ── Error ── */}
       {entry.status === 'failed' && entry.error && (
-        <p className="audio-card__error" role="alert">⚠ {entry.error}</p>
+        <p className="audio-card__error" role="alert">
+          <Icon name="alert" size={16} />
+          <span>{entry.error}</span>
+        </p>
       )}
 
       {/* ── Footer ── */}
@@ -276,9 +295,16 @@ export function AudioEntryCard({ entry, onDelete, onUseTranscript, onUpdate }: A
               disabled={saving || replacing}
               aria-label="Re-record this memo with the microphone"
             >
-              {recorderOpen ? 'Hide recorder' : '🎙 Re-record'}
+              <Icon name="mic" size={14} />
+              {recorderOpen ? 'Hide recorder' : 'Re-record'}
             </Button>
-            <Button size="sm" onClick={saveEdit} disabled={saving || replacing} aria-label="Save your corrections">
+            <Button
+              size="sm"
+              onClick={saveEdit}
+              disabled={saving || replacing}
+              aria-label="Save your corrections"
+            >
+              <Icon name="check" size={14} />
               {saving ? 'Saving…' : 'Save changes'}
             </Button>
             <Button variant="ghost" size="sm" onClick={cancelEdit} disabled={saving || replacing}>
@@ -305,7 +331,8 @@ export function AudioEntryCard({ entry, onDelete, onUseTranscript, onUpdate }: A
                   disabled={replacing}
                   aria-controls={inputId}
                 >
-                  {replacing ? 'Replacing…' : '🔁 Replace audio'}
+                  <Icon name="repeat" size={14} />
+                  {replacing ? 'Replacing…' : 'Replace audio'}
                 </Button>
                 <Button
                   variant="secondary"
@@ -313,7 +340,8 @@ export function AudioEntryCard({ entry, onDelete, onUseTranscript, onUpdate }: A
                   onClick={startEdit}
                   aria-label={`Edit the transcript of the memo from ${formatDate(entry.created_at)}`}
                 >
-                  ✏️ Edit
+                  <Icon name="edit" size={14} />
+                  Edit
                 </Button>
               </>
             )}

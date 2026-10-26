@@ -2,6 +2,7 @@ import { createBrowserRouter, Navigate, RouterProvider, useLocation } from 'reac
 
 import { AdminLayout } from '../layouts/AdminLayout'
 import { AppLayout } from '../layouts/AppLayout'
+import { AuthLayout } from '../layouts/AuthLayout'
 import { PublicLayout } from '../layouts/PublicLayout'
 import { AdminHomePage } from '../pages/AdminHomePage'
 import { ErrorPage } from '../pages/ErrorPage'
@@ -40,14 +41,19 @@ const router = createBrowserRouter(
           element: <PublicLayout />,
           children: [
             { index: true, element: <HomePage /> },
+            { path: '*', element: <NotFoundPage /> },
+          ],
+        },
+        {
+          element: <RedirectIfAuthenticated />,
+          children: [
             {
-              element: <RedirectIfAuthenticated />,
+              element: <AuthLayout />,
               children: [
                 { path: 'login', element: <LoginPage /> },
                 { path: 'register', element: <RegisterPage /> },
               ],
             },
-            { path: '*', element: <NotFoundPage /> },
           ],
         },
         {

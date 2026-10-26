@@ -4,14 +4,18 @@ import { useParams } from 'react-router-dom'
 import { Alert } from '../../../components/Alert'
 import { Button } from '../../../components/Button'
 import { EmptyState } from '../../../components/EmptyState'
+import { Icon } from '../../../components/Icon'
 import { LoadingState } from '../../../components/LoadingState'
 import { PageHeader } from '../../../components/PageHeader'
+import { StatusBadge } from '../../../components/StatusBadge'
 import { useDocumentTitle } from '../../../hooks/useDocumentTitle'
+import { formatPeopleDateTime } from '../formatPeopleDate'
 import { FaceTaggingCard } from '../components/FaceTaggingCard'
 import { PeopleNav } from '../components/PeopleNav'
 import { describeApiError } from '../describeApiError'
 import { peopleApi } from '../peopleApi'
 import type { Person, PhotoDetail } from '../types'
+import '../people.css'
 
 export function PhotoTaggingPage() {
   const { id } = useParams()
@@ -53,14 +57,22 @@ export function PhotoTaggingPage() {
   }, [load])
 
   return (
-    <>
+    <div className="people-page">
       <PeopleNav
         section="photos"
         currentLabel={photo ? `Photo #${photo.id}` : undefined}
       />
 
       <PageHeader
+        eyebrow="Étiquetage"
         title={photo ? `Photo #${photo.id}` : 'Tagging'}
+        badge={
+          photo ? (
+            <StatusBadge status="neutral">
+              {photo.faces.length} visage{photo.faces.length > 1 ? 's' : ''}
+            </StatusBadge>
+          ) : undefined
+        }
         description={
           photo
             ? `${photo.faces.length} visage${photo.faces.length > 1 ? 's' : ''} détecté${photo.faces.length > 1 ? 's' : ''}. Associez chaque visage à une personne.`
@@ -69,11 +81,12 @@ export function PhotoTaggingPage() {
       />
 
       {error && (
-        <div className="stack">
+        <div className="people-error">
           <Alert variant="error" title="Impossible de charger la photo">
             {error}
           </Alert>
           <Button variant="secondary" onClick={() => void load()}>
+            <Icon name="refresh" size={15} />
             Réessayer
           </Button>
         </div>
@@ -83,38 +96,54 @@ export function PhotoTaggingPage() {
 
       {!loading && photo && (
         <>
-          <img
-            src={photo.photo}
-            alt={`Photo ${photo.id}`}
-            style={{
-              maxWidth: '100%',
-              borderRadius: 'var(--radius-lg)',
-              border: '1px solid var(--border)',
-              marginBottom: 'var(--space-5)',
-            }}
-          />
+          <figure className="tag-photo">
+            <img src={photo.photo} alt={`Photo ${photo.id}`} />
+            <figcaption>
+              <span>
+                <Icon name="image" size={13} />
+                Photo #{photo.id}
+              </span>
+              <span>
+                <Icon name="clock" size={13} />
+                {formatPeopleDateTime(photo.uploaded_at)}
+              </span>
+            </figcaption>
+          </figure>
 
-          <h2>Visages détectés</h2>
-
-          {photo.faces.length === 0 ? (
-            <EmptyState
-              title="Aucun visage détecté"
-              description="Aucun visage n’a été trouvé sur cette photo."
-            />
-          ) : (
-            <div className="stack">
-              {photo.faces.map((face) => (
-                <FaceTaggingCard
-                  key={face.id}
-                  face={face}
-                  people={people}
-                  onChanged={() => load(true)}
-                />
-              ))}
+          <section className="faces-section" aria-labelledby="faces-heading">
+            <div className="faces-section__head">
+              <div>
+                <p className="eyebrow">Visages</p>
+                <h2 id="faces-heading">Visages détectés</h2>
+              </div>
+              {photo.faces.length > 0 && (
+                <p className="people-count">
+                  {photo.faces.length} visage{photo.faces.length > 1 ? 's' : ''}
+                </p>
+              )}
             </div>
-          )}
+
+            {photo.faces.length === 0 ? (
+              <EmptyState
+                icon="users"
+                title="Aucun visage détecté"
+                description="Aucun visage n’a été trouvé sur cette photo."
+              />
+            ) : (
+              <div className="face-stack">
+                {photo.faces.map((face) => (
+                  <FaceTaggingCard
+                    key={face.id}
+                    face={face}
+                    people={people}
+                    onChanged={() => load(true)}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
         </>
       )}
-    </>
+    </div>
   )
 }

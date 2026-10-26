@@ -1,5 +1,6 @@
 import { Alert } from '../../../components/Alert'
 import { Button } from '../../../components/Button'
+import { Icon } from '../../../components/Icon'
 import { Modal } from './Modal'
 
 export interface ConfirmDialogProps {
@@ -31,7 +32,7 @@ export function ConfirmDialog({
     >
       <div className="media-confirm">
         <span className="media-confirm__icon" aria-hidden="true">
-          !
+          <Icon name="trash" size={22} />
         </span>
         <div className="media-confirm__body">
           <p className="media-confirm__message">{message}</p>

@@ -1,4 +1,5 @@
 import { Button } from '../../../components/Button'
+import { Icon } from '../../../components/Icon'
 import type { Summary } from '../../../types/summaries'
 import { formatDateTime } from '../../../utils/format'
 import { Dialog } from './Dialog'
@@ -27,6 +28,7 @@ export function SummaryDetailDialog({ summary, onClose }: SummaryDetailDialogPro
         <>
           {canIllustrate && (
             <a className="btn" href={mediaLibraryHref(summary)}>
+              <Icon name="image" size={15} />
               Generate illustration
             </a>
           )}
@@ -36,73 +38,67 @@ export function SummaryDetailDialog({ summary, onClose }: SummaryDetailDialogPro
         </>
       }
     >
-      <dl className="detail-list summary-detail">
-        {summary.journal_entry_id !== null && (
-          <div className="detail-list__row">
-            <dt>Journal entry</dt>
-            <dd>Journal entry #{summary.journal_entry_id}</dd>
-          </div>
-        )}
-
-        <div className="detail-list__row">
-          <dt>Summary</dt>
-          <dd>
-            <p className="summary-detail__text">{summary.summary_text}</p>
-          </dd>
+      <div className="reflection-detail">
+        <div className="reflection-detail__meta">
+          <time dateTime={summary.created_at}>{formatDateTime(summary.created_at)}</time>
+          {summary.mood && (
+            <span className="badge badge--neutral">
+              <Icon name="leaf" size={12} />
+              {summary.mood}
+            </span>
+          )}
+          {summary.journal_entry_id !== null && (
+            <a
+              className="reflection-detail__source"
+              href={`/app/journal?edit=${summary.journal_entry_id}`}
+            >
+              Journal entry #{summary.journal_entry_id}
+              <Icon name="arrowUpRight" size={13} />
+            </a>
+          )}
         </div>
 
-        <div className="detail-list__row">
-          <dt>Mood</dt>
-          <dd>
-            {summary.mood ? (
-              <span className="badge badge--neutral">{summary.mood}</span>
-            ) : (
-              <span className="muted">Not set</span>
-            )}
-          </dd>
-        </div>
+        <blockquote className="reflection-detail__quote">
+          <Icon name="quote" size={22} />
+          <p>{summary.summary_text}</p>
+        </blockquote>
 
-        <div className="detail-list__row">
-          <dt>Themes</dt>
-          <dd>
-            {summary.themes.length > 0 ? (
-              <ul className="tag-list" aria-label={`Themes for summary ${summary.id}`}>
-                {summary.themes.map((theme, index) => (
-                  <li className="tag" key={`${theme}-${index}`}>
-                    {theme}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <span className="muted">No themes</span>
-            )}
-          </dd>
-        </div>
+        <section className="reflection-detail__section" aria-labelledby="reflection-themes">
+          <h3 id="reflection-themes">Themes</h3>
+          {summary.themes.length > 0 ? (
+            <ul className="tag-list" aria-label={`Themes for summary ${summary.id}`}>
+              {summary.themes.map((theme, index) => (
+                <li className="tag" key={`${theme}-${index}`}>
+                  {theme}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="muted">No themes</p>
+          )}
+        </section>
 
-        <div className="detail-list__row">
-          <dt>Illustration prompt</dt>
-          <dd>
-            {canIllustrate ? (
-              <p className="summary-detail__prompt">{summary.illustration_prompt}</p>
-            ) : (
-              <span className="muted">
-                Not set. Add an illustration prompt in the summary editor to
-                enable illustration generation.
-              </span>
-            )}
-          </dd>
-        </div>
+        <section
+          className="reflection-detail__section"
+          aria-labelledby="reflection-illustration"
+        >
+          <h3 id="reflection-illustration">Illustration prompt</h3>
+          {canIllustrate ? (
+            <p className="reflection-detail__prompt">{summary.illustration_prompt}</p>
+          ) : (
+            <p className="muted">
+              Not set. Add an illustration prompt in the summary editor to enable illustration
+              generation.
+            </p>
+          )}
+        </section>
 
-        <div className="detail-list__row">
-          <dt>Created</dt>
-          <dd>{formatDateTime(summary.created_at)}</dd>
-        </div>
-
-        <div className="detail-list__row">
-          <dt>Updated</dt>
-          <dd>{formatDateTime(summary.updated_at)}</dd>
-        </div>
-      </dl>
+        <p className="reflection-detail__timestamps">
+          Created {formatDateTime(summary.created_at)}
+          <span aria-hidden="true"> · </span>
+          Updated {formatDateTime(summary.updated_at)}
+        </p>
+      </div>
     </Dialog>
   )
 }

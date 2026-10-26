@@ -1,5 +1,7 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react'
 
+import { Icon } from '../../../components/Icon'
+
 export interface ModalProps {
   title: string
   onClose: () => void
@@ -93,18 +95,7 @@ export function Modal({ title, onClose, children, wide = false, variant = 'dialo
             onClick={() => onCloseRef.current()}
             aria-label="Close dialog"
           >
-            <svg
-              viewBox="0 0 24 24"
-              width="18"
-              height="18"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              aria-hidden="true"
-            >
-              <path d="M6 6l12 12M18 6L6 18" />
-            </svg>
+            <Icon name="close" size={18} />
           </button>
         </div>
         {children}

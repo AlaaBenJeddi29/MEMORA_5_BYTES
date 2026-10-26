@@ -5,7 +5,9 @@ import { Alert } from '../../../components/Alert'
 import { Button } from '../../../components/Button'
 import { EmptyState } from '../../../components/EmptyState'
 import { FormField } from '../../../components/FormField'
+import { Icon } from '../../../components/Icon'
 import { PageHeader } from '../../../components/PageHeader'
+import { StatusBadge } from '../../../components/StatusBadge'
 import { TextInput } from '../../../components/TextInput'
 import { useDocumentTitle } from '../../../hooks/useDocumentTitle'
 import { normalizeApiError, type NormalizedErrors } from '../../../services/errors'
@@ -249,20 +251,19 @@ export function MediaLibraryPage() {
 
   return (
     <div className="media-page">
-      <div className="media-kicker-row">
-        <p className="media-kicker">Your visual journal</p>
-        <p className="media-kicker__aside">Private to your account</p>
-      </div>
-
       <PageHeader
+        eyebrow="Visual archive"
         title="Media library"
+        badge={<StatusBadge status="neutral">Private collection</StatusBadge>}
         description="Photographs you upload and illustrations made with your local ComfyUI model, kept together in one private collection."
         actions={
           <>
             <a className="btn btn--secondary" href="#media-upload">
+              <Icon name="upload" size={16} />
               Upload a photo
             </a>
             <a className="btn" href="#media-generate">
+              <Icon name="sparkles" size={16} />
               Generate an illustration
             </a>
           </>
@@ -272,14 +273,23 @@ export function MediaLibraryPage() {
       {loadState === 'ready' && items.length > 0 && (
         <dl className="media-overview" aria-label="Library summary">
           <div className="media-overview__item">
+            <span className="media-overview__icon" aria-hidden="true">
+              <Icon name="grid" size={16} />
+            </span>
             <dt>All media</dt>
             <dd>{items.length}</dd>
           </div>
           <div className="media-overview__item">
+            <span className="media-overview__icon" aria-hidden="true">
+              <Icon name="camera" size={16} />
+            </span>
             <dt>Original photos</dt>
             <dd>{originalCount}</dd>
           </div>
           <div className="media-overview__item">
+            <span className="media-overview__icon" aria-hidden="true">
+              <Icon name="sparkles" size={16} />
+            </span>
             <dt>AI illustrations</dt>
             <dd>{aiCount}</dd>
           </div>
@@ -288,6 +298,9 @@ export function MediaLibraryPage() {
 
       {notice && (
         <div className="media-notice" role="status">
+          <span className="media-notice__icon" aria-hidden="true">
+            <Icon name="check" size={15} />
+          </span>
           <span>{notice}</span>
           <button
             type="button"
@@ -302,7 +315,7 @@ export function MediaLibraryPage() {
       <section className="media-gallery" aria-labelledby="media-gallery-heading">
         <div className="media-gallery-head">
           <div>
-            <p className="media-kicker">Collection</p>
+            <p className="eyebrow">Collection</p>
             <h2 id="media-gallery-heading">Your gallery</h2>
           </div>
           {items.length > 0 && (
@@ -317,20 +330,11 @@ export function MediaLibraryPage() {
             <FormField label="Search">
               {(field) => (
                 <div className="media-search">
-                  <svg
+                  <Icon
+                    name="search"
+                    size={16}
                     className="media-search__icon"
-                    viewBox="0 0 24 24"
-                    width="16"
-                    height="16"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                    aria-hidden="true"
-                  >
-                    <circle cx="11" cy="11" r="7" />
-                    <path d="m20 20-3.5-3.5" />
-                  </svg>
+                  />
                   <TextInput
                     {...field}
                     type="search"
@@ -387,6 +391,7 @@ export function MediaLibraryPage() {
             </ul>
             <div className="media-form-actions media-alert-actions">
               <Button variant="secondary" onClick={() => setReloadKey((key) => key + 1)}>
+                <Icon name="refresh" size={15} />
                 Try again
               </Button>
             </div>
@@ -395,14 +400,17 @@ export function MediaLibraryPage() {
 
         {loadState === 'ready' && items.length === 0 && (
           <EmptyState
+            icon="image"
             title="Your gallery is empty"
             description="Upload a photo or generate an illustration to start your collection."
             actions={
               <>
                 <a className="btn" href="#media-upload">
+                  <Icon name="upload" size={16} />
                   Upload a photo
                 </a>
                 <a className="btn btn--secondary" href="#media-generate">
+                  <Icon name="sparkles" size={16} />
                   Generate an illustration
                 </a>
               </>
@@ -412,6 +420,7 @@ export function MediaLibraryPage() {
 
         {loadState === 'ready' && items.length > 0 && visibleItems.length === 0 && (
           <EmptyState
+            icon="search"
             title="No media matches these filters"
             description="Try a different search term, or reset the filters to see everything."
             actions={
@@ -438,7 +447,7 @@ export function MediaLibraryPage() {
 
       <section className="media-studio" aria-labelledby="media-studio-heading">
         <header className="media-studio__head">
-          <p className="media-kicker">Add to your library</p>
+          <p className="eyebrow">Add to your library</p>
           <h2 id="media-studio-heading">Two ways to add an image</h2>
           <p className="media-studio__lede">
             Keep a photograph exactly as it is, or turn a moment into a new
@@ -456,6 +465,9 @@ export function MediaLibraryPage() {
               <span className="media-panel__index" aria-hidden="true">
                 01
               </span>
+              <span className="media-panel__icon" aria-hidden="true">
+                <Icon name="camera" size={20} />
+              </span>
               <div className="media-panel__heading">
                 <h3 id="media-upload-heading">Upload a photo</h3>
                 <p>
@@ -467,19 +479,7 @@ export function MediaLibraryPage() {
             <UploadForm onUploaded={addMedia} onView={(media) => setSelected(media)} />
             <aside className="media-privacy-note">
               <span className="media-privacy-note__icon" aria-hidden="true">
-                <svg
-                  viewBox="0 0 24 24"
-                  width="16"
-                  height="16"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <rect x="4" y="10" width="16" height="11" rx="2" />
-                  <path d="M8 10V7a4 4 0 0 1 8 0v3" />
-                </svg>
+                <Icon name="lock" size={16} />
               </span>
               <p>
                 <strong>Private by default.</strong> Only you can see this
@@ -497,6 +497,9 @@ export function MediaLibraryPage() {
             <div className="media-panel__head">
               <span className="media-panel__index" aria-hidden="true">
                 02
+              </span>
+              <span className="media-panel__icon" aria-hidden="true">
+                <Icon name="sparkles" size={20} />
               </span>
               <div className="media-panel__heading">
                 <h3 id="media-generate-heading">Generate an illustration</h3>
