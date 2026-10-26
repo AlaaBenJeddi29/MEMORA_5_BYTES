@@ -25,7 +25,7 @@ class Migration(migrations.Migration):
                 ('summary_text', models.TextField(blank=True, default='')),
                 ('sentiment', models.CharField(blank=True, default='', max_length=100)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('photos', models.ManyToManyField(blank=True, related_name='journal_entries', to='media_library.photo')),
+                ('photos', models.ManyToManyField(blank=True, related_name='journal_entries', to='media_library.mediafile')),
                 ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='journal_entries', to=settings.AUTH_USER_MODEL)),
             ],
             options={

@@ -105,8 +105,9 @@ export function useAudioEntries() {
 
   // Clean up all timers on unmount.
   useEffect(() => {
+    const timers = pollTimers.current
     return () => {
-      pollTimers.current.forEach((timer) => clearInterval(timer))
+      timers.forEach((timer) => clearInterval(timer))
     }
   }, [])
 

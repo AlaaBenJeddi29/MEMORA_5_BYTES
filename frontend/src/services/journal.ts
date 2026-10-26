@@ -2,6 +2,13 @@ import type { JournalEntry, JournalEntryInput, JournalPage, JournalSearchParams 
 import { apiRequest } from './apiClient'
 
 const BASE = '/api/journal/entries/'
+const PICKER_PAGE_SIZE = 100
+
+function buildListUrl(page: number, pageSize?: number): string {
+  const qs = new URLSearchParams({ page: String(page) })
+  if (pageSize) qs.set('page_size', String(pageSize))
+  return `${BASE}?${qs.toString()}`
+}
 
 function buildSearchUrl(params: JournalSearchParams): string {
   const qs = new URLSearchParams()
@@ -13,9 +20,21 @@ function buildSearchUrl(params: JournalSearchParams): string {
   return str ? `${BASE}search/?${str}` : `${BASE}search/`
 }
 
+/** Loads every page of the caller's journal entries (100 per request). */
+async function listAllEntries(): Promise<JournalEntry[]> {
+  const entries: JournalEntry[] = []
+  for (let page = 1; ; page += 1) {
+    const data = await journalApi.list(page, PICKER_PAGE_SIZE)
+    entries.push(...data.results)
+    if (!data.next) {
+      return entries
+    }
+  }
+}
+
 export const journalApi = {
-  list: (page = 1) =>
-    apiRequest<JournalPage>(`${BASE}?page=${page}`),
+  list: (page = 1, pageSize?: number) =>
+    apiRequest<JournalPage>(buildListUrl(page, pageSize)),
 
   get: (id: number) =>
     apiRequest<JournalEntry>(`${BASE}${id}/`),
@@ -31,4 +50,7 @@ export const journalApi = {
 
   search: (params: JournalSearchParams) =>
     apiRequest<JournalPage>(buildSearchUrl(params)),
+
+  /** Real Module 1 entries for the summaries generation picker. */
+  listAll: listAllEntries,
 }

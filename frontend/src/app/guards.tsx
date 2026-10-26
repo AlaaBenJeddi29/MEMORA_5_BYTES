@@ -19,6 +19,26 @@ export function RequireAuth() {
   return <Outlet />
 }
 
+/** Allows only staff accounts into the admin area; regular users go back to the app. */
+export function RequireStaff() {
+  const { status, user } = useAuth()
+  const location = useLocation()
+
+  if (status === 'loading') {
+    return <LoadingState centered label="Checking your session…" />
+  }
+
+  if (status === 'unauthenticated') {
+    return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />
+  }
+
+  if (!user?.is_staff) {
+    return <Navigate to="/app" replace />
+  }
+
+  return <Outlet />
+}
+
 /** Keeps signed-in users away from the public-only auth pages. */
 export function RedirectIfAuthenticated() {
   const { status } = useAuth()

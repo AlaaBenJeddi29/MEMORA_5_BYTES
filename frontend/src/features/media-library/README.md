@@ -1,26 +1,45 @@
 # Media library feature
 
-Photos and videos attached to the journal.
+Uploaded photos and AI-generated illustrations for the journal.
 
 ## Status
 
-**Shell only.** `apps/media/` has no models or endpoints yet, so
-`pages/MediaLibraryPage.tsx` renders the shared `ModulePlaceholder`.
+Implemented against the Module 4 Django API. The page lives at `/app/media`
+and uses `services/media.ts` on top of the shared `apiClient`.
 
-## Where to add UI
+## Generation safeguards
 
-- `pages/` — a gallery/list and an upload control. Register routes in
-  `src/app/router.tsx` under the authenticated `AppLayout`.
-- Delete actions should confirm first and reflect the `204` result; reuse
-  `EmptyState` for the no-items case.
-
-## Where to add API integration
-
-- `services/` — add `services/media.ts` on top of `src/services/apiClient.ts`.
-  Uploads are `multipart/form-data`; the client passes `FormData` through as-is.
-- `types/` — add the media types next to `types/api.ts`.
+- The generation form requires an explicit consent checkbox and a submit
+  action; nothing is generated on page load.
+- A ref-based in-flight guard plus disabled controls prevent duplicate clicks.
+  The API itself has no idempotency ledger, so repeated successful requests
+  are recorded as separate images.
+- Only the typed prompt and the selected real IDs leave the browser. Journal
+  choices come from Module 1's owner-scoped `GET /api/journal/entries/`, and
+  summary choices come from Module 3's `GET /api/summaries/`. The server
+  re-resolves every ID against the signed-in owner before ComfyUI runs.
+- Prompt precedence is manual prompt → the selected summary's stored
+  `illustration_prompt` → the journal entry's title and recap. The journal body
+  text is never sent to ComfyUI, and a summary is not regenerated for an image.
+- `?summary_id=` and `?journal_entry_id=` are selection hints only. The form
+  pre-fills them, but the server remains authoritative on ownership and on
+  whether the summary belongs to the chosen entry.
+- The Module 3 summary detail dialog links here with both IDs so a saved
+  illustration prompt can be rendered without another Gemini call.
+- Prompt guidance and scene-only examples state that the model cannot
+  faithfully recreate a real person's likeness and that names or private
+  details should not be included.
+- AI results are labelled in the gallery, the result panel, and the detail
+  dialog; each states that the image is AI-generated, not an original
+  photograph.
+- Generated outputs are re-encoded to PNG with all provider metadata removed
+  (prompt/workflow text chunks, EXIF, ICC, DPI).
+- Prompt length and server-side size/step limits mirror configurable backend
+  settings; the server remains authoritative.
+- Gallery/API access is owner-scoped. Stored media URLs are unguessable
+  capability URLs (unauthenticated in `DEBUG`), not owner-scoped file access
+  control; production delivery is a team decision (API contract §4.11).
 
 ## API reference
 
-Proposed endpoints only — see `docs/API_CONTRACT.md` §3.5 (upload rules §1.8).
-Do not call them until marked **[IMPLEMENTED]**.
+See `docs/API_CONTRACT.md` §3.5 and `docs/COMFYUI.md`.

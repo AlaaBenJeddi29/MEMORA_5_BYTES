@@ -1,0 +1,85 @@
+/* ==================================================================
+   MEMORA — Error and not-found states
+   A warm card for interruptions and dead ends. Base `.state-page`
+   metrics live in global.css; these panel styles layer on top.
+   ================================================================== */
+
+.state-page--panel {
+  position: relative;
+  margin-block: var(--space-6);
+  padding: clamp(2rem, 1.4rem + 3vw, 3.5rem) var(--space-5);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background:
+    radial-gradient(circle at 12% 0%, rgba(185, 165, 216, 0.26), transparent 46%),
+    radial-gradient(circle at 100% 100%, rgba(169, 183, 160, 0.2), transparent 48%),
+    var(--surface);
+  box-shadow: var(--shadow-md);
+}
+
+.state-page__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.4rem;
+  height: 3.4rem;
+  margin-bottom: var(--space-3);
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--primary);
+  box-shadow: 0 0 0 8px rgba(233, 224, 242, 0.4);
+}
+
+.state-page--panel h1 {
+  margin: var(--space-3) 0 0;
+  font-family: var(--font-display);
+  font-size: clamp(1.9rem, 1.5rem + 1.6vw, 2.8rem);
+  font-weight: 500;
+  line-height: 1.1;
+}
+
+.state-page__detail {
+  max-width: 34rem;
+  margin: var(--space-3) auto 0;
+  font-size: var(--text-sm);
+  line-height: 1.65;
+}
+
+.state-page--panel .state-page__actions {
+  margin-top: var(--space-5);
+}
+
+.state-page--missing .state-page__code {
+  margin: 0;
+  line-height: 0.85;
+}
+
+.state-page--missing .state-page__icon {
+  margin-top: calc(var(--space-4) * -1);
+}
+
+.state-page--error .badge {
+  margin-top: var(--space-2);
+}
+
+.state-page--panel:focus-within {
+  outline: none;
+}
+
+@media (max-width: 560px) {
+  .state-page--panel {
+    margin-block: var(--space-4);
+    border-radius: var(--radius-lg);
+  }
+
+  .state-page--panel .state-page__actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .state-page--panel .state-page__actions .btn {
+    justify-content: center;
+  }
+}

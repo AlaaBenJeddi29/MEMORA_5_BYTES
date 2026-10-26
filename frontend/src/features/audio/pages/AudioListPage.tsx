@@ -1,255 +1,436 @@
 /**
- * AudioListPage — main page for the audio / voice memo feature.
+ * AudioEntryCard — displays a single audio entry with all 4 AI results:
+ *   1. Transcript
+ *   2. Sentiment (label + confidence score)
+ *   3. Language detected
+ *   4. Summary
+ * The transcript and the summary are editable: the AI can mishear a word, and
+ * the corrected text is what gets reused in the journal. From the same edit mode
+ * the recording can be replaced — picked as a file or re-recorded with the
+ * microphone — which sends the entry back through the AI pipeline.
+ * Each finished text can also be read aloud (components/ReadAloudControls.tsx,
+ * browser speech synthesis) without touching the recorded file.
  *
- * Layout:
- *   - PageHeader with title
- *   - VoiceRecorder component (record → upload → live AI status)
- *   - File upload fallback (for pre-recorded .mp3 / .wav files)
- *   - List of AudioEntryCards (with polling for pending/processing entries,
- *     inline correction of the transcript/summary and audio replacement)
- *   - Read-aloud on each card's transcript and summary, through the browser's
- *     own `speechSynthesis` (one speaker at a time; the page says so out loud
- *     when the browser has none)
- *   - AccessibilityWidget (fixed ♿ trigger → text size, contrast, dark mode,
- *     focus ring, announcements, shortcuts; preferences are saved and re-applied
- *     on the next visit)
- *
- * Journal injection ("réinjection automatique"): the transcript of the memo
- * just analysed is previewed in a banner, and "Use in journal" stores it through
- * the journal module's own API (`journalApi` → POST /api/journal/entries/), so
- * the entry is owned by the signed-in user, appears in the journal list and
- * survives a refresh. Clicking twice re-uses the same journal entry instead of
- * creating a duplicate.
+ * Layout: a wide card — header (date, duration, status), then three columns
+ * that use the available width (player + language | sentiment + summary |
+ * transcript), then the action row (replace on the left, edit / journal /
+ * delete on the right). Below 720px the columns stack.
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 
-import { useNavigate } from 'react-router-dom'
-
-import { Alert } from '../../../components/Alert'
-import { AccessibilityWidget } from '../../../components/AccessibilityWidget'
+import { StatusBadge } from '../../../components/StatusBadge'
 import { Button } from '../../../components/Button'
-import { EmptyState } from '../../../components/EmptyState'
-import { LoadingState } from '../../../components/LoadingState'
-import { PageHeader } from '../../../components/PageHeader'
-import { SPEECH_UNSUPPORTED_NOTICE_ID } from '../../../components/ReadAloudControls'
-import { useDocumentTitle } from '../../../hooks/useDocumentTitle'
-import { useSpeech, useStopSpeechOnLeave } from '../../../hooks/useSpeech'
-import { UNSUPPORTED_MESSAGE } from '../../../utils/speech'
-import { AudioEntryCard } from '../components/AudioEntryCard'
-import { VoiceRecorder } from '../components/VoiceRecorder'
-import { useAudioEntries } from '../hooks/useAudioEntries'
-import { useTranscriptJournal } from '../hooks/useTranscriptJournal'
+import { ConfirmDialog } from '../../../components/ConfirmDialog'
+import { ReadAloudControls } from '../../../components/ReadAloudControls'
+import { Icon } from '../../../components/Icon'
+import type { JournalAction } from '../hooks/useTranscriptJournal'
+import { AudioReplaceRecorder } from './AudioReplaceRecorder'
+import type { AudioEntryPatch } from '../services/audio'
+import type { AudioEntry } from '../types/audio'
 
-export function AudioListPage() {
-  useDocumentTitle('Audio & voice memos · MEMORA')
+// Emoji used by the module2 layout. If you already have these maps elsewhere
+// in your project, delete these two and import yours instead.
+const SENTIMENT_EMOJI: Record<string, string> = {
+  positive: '😊',
+  negative: '😞',
+  neutral: '😐',
+  mixed: '🤔',
+}
 
-  const navigate = useNavigate()
+const LANGUAGE_FLAG: Record<string, string> = {
+  en: '🇬🇧',
+  fr: '🇫🇷',
+  ar: '🇹🇳',
+  es: '🇪🇸',
+  de: '🇩🇪',
+  it: '🇮🇹',
+  pt: '🇵🇹',
+  nl: '🇳🇱',
+  ru: '🇷🇺',
+  tr: '🇹🇷',
+  zh: '🇨🇳',
+  ja: '🇯🇵',
+}
 
-  // Read-aloud is one global speaker: leaving this page must silence it.
-  const speech = useSpeech()
-  useStopSpeechOnLeave()
+interface AudioEntryCardProps {
+  entry: AudioEntry
+  onDelete: (id: number) => void
+  /** Receives the whole entry: the journal keeps the transcript plus its AI results. */
+  onUseTranscript?: (entry: AudioEntry) => void
+  /** Journal injection state of this entry (idle → saving → saved). */
+  journalAction?: JournalAction
+  /** Resolves false when the API rejected the edit, keeping the draft on screen. */
+  onUpdate: (id: number, patch: AudioEntryPatch) => Promise<boolean>
+}
 
-  const {
-    entries,
-    loading,
-    uploading,
-    uploadError,
-    fetchError,
-    updateError,
-    upload,
-    update,
-    remove,
-    clearUpdateError,
-    activeEntry,
-    clearActive,
-  } = useAudioEntries()
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  })
+}
 
-  const journal = useTranscriptJournal()
+function formatDuration(secs: number | null): string {
+  if (secs === null) return ''
+  const m = Math.floor(secs / 60)
+  const s = Math.round(secs % 60)
+  return m > 0 ? `${m}m ${s}s` : `${s}s`
+}
 
-  // Transcript injected from the latest successful analysis or "Use in journal" click.
-  const [injectedTranscript, setInjectedTranscript] = useState<string | null>(null)
+export function AudioEntryCard({
+  entry,
+  onDelete,
+  onUseTranscript,
+  journalAction = 'idle',
+  onUpdate,
+}: AudioEntryCardProps) {
+  const sentimentEmoji = entry.sentiment ? SENTIMENT_EMOJI[entry.sentiment] ?? '❓' : ''
+  const langFlag       = entry.language_code ? (LANGUAGE_FLAG[entry.language_code] ?? '🌐') : ''
 
-  // Announce each analysed state only once, even though polling re-renders it.
-  // Keyed on updated_at so replacing the recording re-injects the fresh text.
-  const announced = useRef<Set<string>>(new Set())
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [replacing, setReplacing] = useState(false)
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  // Microphone panel, opened from within edit mode.
+  const [recorderOpen, setRecorderOpen] = useState(false)
+  const [transcriptDraft, setTranscriptDraft] = useState('')
+  const [summaryDraft, setSummaryDraft] = useState('')
 
-  useEffect(() => {
-    if (!activeEntry) return
-    if (activeEntry.status === 'succeeded' || activeEntry.status === 'failed') {
-      const key = `${activeEntry.id}:${activeEntry.updated_at}`
-      if (announced.current.has(key)) return
-      announced.current.add(key)
-      if (activeEntry.status === 'succeeded' && activeEntry.transcript) {
-        setInjectedTranscript(activeEntry.transcript)
-      }
-    }
-  }, [activeEntry])
-
-  // File input ref for the "upload existing file" flow.
+  // One hidden file input per card, for the "replace this recording" flow.
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const inputId = `audio-replace-input-${entry.id}`
 
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (file) {
-      upload(file)
-      // Reset so the same file can be re-selected if needed.
-      e.target.value = ''
+  // The API refuses edits while the worker may still overwrite them (409).
+  const editable = entry.status === 'succeeded' || entry.status === 'failed'
+  // The three analysis columns; also shown to type a failed memo by hand.
+  const analysed = entry.status === 'succeeded' || editing
+  // "Use in journal" needs a transcript to send, so it appears with one only.
+  const canUseInJournal = analysed && !editing && Boolean(entry.transcript) && Boolean(onUseTranscript)
+
+  function startEdit() {
+    setTranscriptDraft(entry.transcript ?? '')
+    setSummaryDraft(entry.summary ?? '')
+    setEditing(true)
+  }
+
+  function cancelEdit() {
+    setEditing(false)
+    setSaving(false)
+    setRecorderOpen(false)
+  }
+
+  async function saveEdit() {
+    setSaving(true)
+    const saved = await onUpdate(entry.id, {
+      transcript: transcriptDraft,
+      summary: summaryDraft,
+    })
+    setSaving(false)
+    if (saved) setEditing(false)
+  }
+
+  async function replaceAudio(file: File) {
+    setReplacing(true)
+    // On success the entry comes back as "pending" with empty AI fields, and the
+    // list hook starts polling it again until the new analysis finishes.
+    const saved = await onUpdate(entry.id, { file })
+    setReplacing(false)
+    if (saved) {
+      // The typed drafts would have been cleared server-side anyway.
+      setEditing(false)
+      setRecorderOpen(false)
     }
   }
 
-  function dismissAnalysis() {
-    clearActive()
-    setInjectedTranscript(null)
+  async function handleConfirmDelete() {
+    setDeleting(true)
+    onDelete(entry.id)
+    // La suppression est synchrone côté parent ; on laisse le dialog ouvert
+    // le temps que le parent retire la carte de la liste.
+    setDeleting(false)
+    setConfirmDeleteOpen(false)
+  }
+
+  function handleReplaceChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    // Reset first: choosing the same file twice must still fire change.
+    e.target.value = ''
+    if (file) void replaceAudio(file)
   }
 
   return (
-    <main className="audio-page">
-      <PageHeader
-        title="Audio & voice memos"
-        description="Record, upload and transcribe your voice memos. The AI analyses the text, detects the spoken language and the sentiment."
-      />
+    <article
+      className={`audio-card audio-card--${entry.status}`}
+      aria-label={`Voice memo from ${formatDate(entry.created_at)}`}
+    >
+      {/* ── Header ── */}
+      <div className="audio-card__header">
+        <div className="audio-card__meta">
+          <span className="audio-card__mark" aria-hidden="true">
+            <Icon name="wave" size={18} />
+          </span>
+          <div className="audio-card__meta-text">
+            <time className="audio-card__date" dateTime={entry.created_at}>
+              {formatDate(entry.created_at)}
+            </time>
+            {entry.duration_seconds !== null && (
+              <span className="audio-card__duration">
+                <Icon name="clock" size={12} />
+                {formatDuration(entry.duration_seconds)}
+              </span>
+            )}
+          </div>
+        </div>
+        <StatusBadge
+          status={
+            entry.status === 'succeeded'
+              ? 'succeeded'
+              : entry.status === 'failed'
+                ? 'failed'
+                : entry.status === 'processing'
+                  ? 'processing'
+                  : 'pending'
+          }
+        />
+      </div>
 
-      {/* Shown once for the page; the per-text read buttons point at it. */}
-      {!speech.supported && (
-        <p id={SPEECH_UNSUPPORTED_NOTICE_ID} className="audio-page__notice" role="note">
-          ⚠ {UNSUPPORTED_MESSAGE}
+      {/* ── Body: playback | analysis | transcript, side by side when there is room ── */}
+      <div className="audio-card__body">
+        {/* ① The recording itself, then the language it was spoken in */}
+        <div className="audio-card__column audio-card__column--playback">
+          {entry.file && (
+            <div className="audio-card__player">
+              {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+              <audio controls src={entry.file} className="audio-card__audio" />
+            </div>
+          )}
+
+          {/* Processing indicator */}
+          {(entry.status === 'pending' || entry.status === 'processing') && (
+            <p className="audio-card__processing" role="status" aria-live="polite">
+              ⏳ Analysing your voice memo…
+            </p>
+          )}
+
+          {analysed && entry.language_name && (
+            <div className="audio-card__result-row audio-card__result-row--language">
+              <span className="audio-card__result-icon" aria-hidden="true">{langFlag}</span>
+              <div>
+                <span className="audio-card__result-label">Language detected</span>
+                <span className="audio-card__result-value">{entry.language_name}</span>
+                {entry.language_code && (
+                  <span className="audio-card__result-badge">{entry.language_code.toUpperCase()}</span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ② Sentiment + summary (also while editing a failed memo: the
+            transcript saved from the audio is null, but a hand-written one
+            can be added) */}
+        {analysed && (
+          <div className="audio-card__column audio-card__column--analysis">
+            {entry.sentiment && (
+              <div className={`audio-card__result-row audio-card__result-row--sentiment audio-card__result-row--${entry.sentiment}`}>
+                <span className="audio-card__result-icon" aria-hidden="true">{sentimentEmoji}</span>
+                <div>
+                  <span className="audio-card__result-label">Sentiment</span>
+                  <span className="audio-card__result-value">
+                    {entry.sentiment.charAt(0).toUpperCase() + entry.sentiment.slice(1)}
+                  </span>
+                  {entry.sentiment_score !== null && (
+                    <span className="audio-card__result-badge">
+                      {Math.round(entry.sentiment_score * 100)}% confidence
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {(entry.summary || editing) && (
+              <div className="audio-card__result-block">
+                <h3 className="audio-card__result-label">📋 Summary</h3>
+                {editing ? (
+                  <textarea
+                    className="audio-card__edit-field"
+                    aria-label="Edit summary"
+                    value={summaryDraft}
+                    rows={3}
+                    onChange={(e) => setSummaryDraft(e.target.value)}
+                  />
+                ) : (
+                  <>
+                    <p className="audio-card__summary-text">{entry.summary}</p>
+                    <ReadAloudControls
+                      entryId={entry.id}
+                      field="summary"
+                      text={entry.summary}
+                      lang={entry.language_code}
+                      subject={`the summary of the memo from ${formatDate(entry.created_at)}`}
+                    />
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ③ Transcript */}
+        {analysed && (
+          <div className="audio-card__column audio-card__column--transcript">
+            {(entry.transcript || editing) && (
+              <div className="audio-card__result-block">
+                <h3 className="audio-card__result-label">🎙 Transcript</h3>
+                {editing ? (
+                  <textarea
+                    className="audio-card__edit-field"
+                    aria-label="Edit transcript"
+                    value={transcriptDraft}
+                    rows={5}
+                    onChange={(e) => setTranscriptDraft(e.target.value)}
+                  />
+                ) : (
+                  <>
+                    <p className="audio-card__transcript-text">{entry.transcript}</p>
+                    <ReadAloudControls
+                      entryId={entry.id}
+                      field="transcript"
+                      text={entry.transcript}
+                      lang={entry.language_code}
+                      subject={`the transcript of the memo from ${formatDate(entry.created_at)}`}
+                    />
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ── Microphone re-recording (only while editing) ── */}
+      {editing && recorderOpen && (
+        <AudioReplaceRecorder busy={replacing || saving} onFile={replaceAudio} />
+      )}
+
+      {/* ── Error ── */}
+      {entry.status === 'failed' && entry.error && (
+        <p className="audio-card__error" role="alert">
+          <Icon name="alert" size={16} />
+          <span>{entry.error}</span>
         </p>
       )}
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Transcript injection banner                                         */}
-      {/* ------------------------------------------------------------------ */}
-      {injectedTranscript && (
-        <section className="audio-page__transcript-banner" aria-live="polite">
-          <Alert variant="success">
-            <strong>Transcript ready to use in your journal:</strong>
-            <blockquote className="audio-page__quote">{injectedTranscript}</blockquote>
-            {activeEntry && (
-              <Button
-                size="sm"
-                onClick={() => void journal.saveOrOpen(activeEntry)}
-                disabled={journal.actionFor(activeEntry.id) === 'saving'}
-              >
-                {journal.actionFor(activeEntry.id) === 'saved'
-                  ? '📓 In your journal'
-                  : '📝 Add to journal'}
-              </Button>
+      {/* ── Footer: secondary action left, main actions right-aligned ── */}
+      <div className="audio-card__footer">
+        {editing ? (
+          <div className="audio-card__actions">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setRecorderOpen((open) => !open)}
+              disabled={saving || replacing}
+              aria-label="Re-record this memo with the microphone"
+            >
+              <Icon name="mic" size={14} />
+              {recorderOpen ? 'Hide recorder' : 'Re-record'}
+            </Button>
+            <Button
+              size="sm"
+              onClick={saveEdit}
+              disabled={saving || replacing}
+              aria-label="Save your corrections"
+            >
+              <Icon name="check" size={14} />
+              {saving ? 'Saving…' : 'Save changes'}
+            </Button>
+            <Button variant="ghost" size="sm" onClick={cancelEdit} disabled={saving || replacing}>
+              Cancel
+            </Button>
+          </div>
+        ) : (
+          <>
+            {editable && (
+              <div className="audio-card__footer-start">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="audio/mpeg,audio/wav,audio/webm,audio/mp4"
+                  className="sr-only"
+                  id={inputId}
+                  aria-label="Choose a new recording for this memo"
+                  onChange={handleReplaceChange}
+                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={replacing}
+                  aria-controls={inputId}
+                >
+                  <Icon name="repeat" size={14} />
+                  {replacing ? 'Replacing…' : 'Replace audio'}
+                </Button>
+              </div>
             )}
-            <Button size="sm" variant="ghost" onClick={dismissAnalysis}>
-              Dismiss
-            </Button>
-          </Alert>
-        </section>
-      )}
-
-      {/* ------------------------------------------------------------------ */}
-      {/* Intake: recorder and file upload side by side on wide screens       */}
-      {/* ------------------------------------------------------------------ */}
-      <div className="audio-page__intake">
-        {/* Record a new memo */}
-        <section className="audio-page__recorder" aria-labelledby="recorder-heading">
-          <h2 id="recorder-heading" className="audio-page__section-title">
-            Record a new memo
-          </h2>
-          <VoiceRecorder
-            onUpload={upload}
-            uploading={uploading}
-            uploadError={uploadError}
-            analysis={activeEntry}
-          />
-          {activeEntry && (activeEntry.status === 'succeeded' || activeEntry.status === 'failed') && (
-            <Button size="sm" variant="ghost" onClick={clearActive}>
-              Hide analysis status
-            </Button>
-          )}
-        </section>
-
-        {/* Upload an existing file */}
-        <section className="audio-page__upload" aria-labelledby="upload-heading">
-          <h2 id="upload-heading" className="audio-page__section-title">
-            Or upload an existing file
-          </h2>
-          <p className="audio-page__upload-hint">
-            Accepted formats: MP3, WAV, WebM, MP4 audio — max 25 MB.
-          </p>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="audio/mpeg,audio/wav,audio/webm,audio/mp4"
-            className="sr-only"
-            id="audio-file-input"
-            aria-label="Choose an audio file to upload"
-            onChange={handleFileChange}
-          />
-          <Button
-            variant="secondary"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            aria-controls="audio-file-input"
-          >
-            {uploading ? 'Uploading…' : '📁 Choose file'}
-          </Button>
-        </section>
+            <div className="audio-card__actions">
+              {editable && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={startEdit}
+                  aria-label={`Edit the transcript of the memo from ${formatDate(entry.created_at)}`}
+                >
+                  <Icon name="edit" size={14} />
+                  Edit
+                </Button>
+              )}
+              {canUseInJournal && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => onUseTranscript?.(entry)}
+                  disabled={journalAction === 'saving'}
+                  aria-label={
+                    journalAction === 'saved'
+                      ? 'Open this memo in the journal'
+                      : 'Use transcript in journal entry'
+                  }
+                >
+                  {journalAction === 'saving'
+                    ? 'Adding to journal…'
+                    : journalAction === 'saved'
+                    ? '📓 In your journal'
+                    : '📝 Use in journal'}
+                </Button>
+              )}
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => setConfirmDeleteOpen(true)}
+                aria-label={`Delete voice memo from ${formatDate(entry.created_at)}`}
+              >
+                Delete
+              </Button>
+            </div>
+          </>
+        )}
       </div>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* List                                                                */}
-      {/* ------------------------------------------------------------------ */}
-      <section className="audio-page__list" aria-labelledby="list-heading">
-        <h2 id="list-heading" className="audio-page__section-title">
-          Your voice memos
-        </h2>
-
-        {fetchError && <Alert variant="error">{fetchError}</Alert>}
-        {updateError && (
-          <Alert variant="error">
-            {updateError}
-            <Button size="sm" variant="ghost" onClick={clearUpdateError}>
-              Dismiss
-            </Button>
-          </Alert>
-        )}
-        {journal.message && (
-          <Alert variant={journal.message.variant}>
-            {journal.message.text}
-            {journal.message.variant === 'success' && (
-              <Button size="sm" variant="ghost" onClick={() => navigate('/app/journal')}>
-                Open the journal
-              </Button>
-            )}
-            <Button size="sm" variant="ghost" onClick={journal.clearMessage}>
-              Dismiss
-            </Button>
-          </Alert>
-        )}
-
-        {loading ? (
-          <LoadingState label="Loading voice memos…" />
-        ) : entries.length === 0 ? (
-          <EmptyState
-            title="No voice memos yet"
-            description="Record or upload your first voice memo above."
-          />
-        ) : (
-          <ul className="audio-page__entries" aria-label="Voice memo list">
-            {entries.map((entry) => (
-              <li key={entry.id}>
-                <AudioEntryCard
-                  entry={entry}
-                  onDelete={remove}
-                  onUpdate={update}
-                  journalAction={journal.actionFor(entry.id)}
-                  onUseTranscript={journal.saveOrOpen}
-                />
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      {/* Fixed bottom-right: the page reserves room so it never covers a card. */}
-      <AccessibilityWidget />
-    </main>
+      {/* ── Confirmation de suppression ── */}
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        title="Delete this voice memo?"
+        message="This action is permanent and cannot be undone."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        confirmVariant="danger"
+        busy={deleting}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setConfirmDeleteOpen(false)}
+      />
+    </article>
   )
 }

@@ -21,13 +21,21 @@ From this `frontend/` directory:
 # 1. Install dependencies
 npm install
 
-# 2. Create your local env file (git-ignored)
+# 2. (Optional) Create your local env file (git-ignored)
 cp .env.example .env.local
-# .env.local sets VITE_API_BASE_URL (default http://127.0.0.1:8000)
+# Leave VITE_API_BASE_URL empty: the dev server proxies /api and /media to
+# http://127.0.0.1:8000
 
-# 3. Start the dev server (http://localhost:3000)
+# 3. Start the dev server
 npm run dev
 ```
+
+Open the app at the URL Vite prints (usually **http://localhost:3000**). The
+browser only talks to the Vite origin; Vite proxies `/api` and `/media` to
+Django, so the session and CSRF cookies stay first-party and the hostname no
+longer affects authentication. Do not set `VITE_API_BASE_URL` to an absolute
+URL during local development, or you bypass the proxy and reintroduce the
+cross-site cookie problem described below.
 
 The dev server is pinned to **port 3000** and **fails if the port is taken**
 (`strictPort`), because the backend CORS allowlist is configured for
@@ -62,10 +70,10 @@ secrets here**.
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
-| `VITE_API_BASE_URL` | Base URL of the backend API (no trailing slash). | `http://127.0.0.1:8000` |
+| `VITE_API_BASE_URL` | Base URL of the backend API (no trailing slash). | empty → same origin (Vite proxy) |
 
-Set it to an empty value (`VITE_API_BASE_URL=`) to call the API on the app's own
-origin (see the proxy note below).
+Leave it unset or empty to call the API on the app's own origin. Set an absolute
+URL only if the API is hosted on a different origin.
 
 ## Authentication & CSRF
 
@@ -106,24 +114,24 @@ Implemented flows (all against real endpoints):
 | Current user | `GET /api/accounts/me/` |
 | CSRF cookie | `GET /api/accounts/csrf/` |
 
-### Cross-origin caveat (no proxy)
+### Dev proxy (enabled)
 
-`document.cookie` only exposes cookies for the **app's own origin**. With the
-default cross-origin setup (`localhost:3000` calling `127.0.0.1:8000`), the
-browser will not let the app read the backend's `csrftoken` cookie, so
-CSRF-protected writes (sign out, and any future write endpoints) can fail — even
-though reads and `login`/`register` work.
+The Vite dev server proxies `/api` and `/media` to `http://127.0.0.1:8000`
+(`vite.config.ts`), and `VITE_API_BASE_URL` defaults to empty. The browser
+therefore only talks to `localhost:3000` (or `127.0.0.1:3000`); the session and
+CSRF cookies are first-party and are sent normally. The proxy preserves the
+original `Host` header, so Django's CSRF `Origin` check still matches.
 
-Do **not** change the backend to work around this. Instead, either:
+This deliberately replaces the old cross-origin dev setup. `localhost` and
+`127.0.0.1` are different sites, so a direct call from `localhost:3000` to
+`127.0.0.1:8000` makes the session cookie cross-site; Django's default
+`SameSite=Lax` then prevents it from being sent, and authenticated reads return
+`403` even after a successful login. Setting `VITE_API_BASE_URL` to an absolute
+URL bypasses the proxy and reintroduces that problem. `CSRF_TRUSTED_ORIGINS`
+only relaxes CSRF origin checks — it does not make a cross-site session cookie
+readable or sent.
 
-1. **Use a Vite dev proxy (recommended):** add a proxy for `/api` to
-   `http://127.0.0.1:8000` in `vite.config.ts`, set `VITE_API_BASE_URL=` (empty)
-   so requests are same-origin, and the session + CSRF cookies work naturally; or
-2. Have the backend list the app origin in `CSRF_TRUSTED_ORIGINS` (a backend /
-   team decision — `docs/API_CONTRACT.md` §4).
-
-The proxy is intentionally **not** enabled by default, to keep the repository's
-existing CORS-based setup unchanged.
+CORS remains configured on the backend for non-proxied clients and tests.
 
 ## Testing
 

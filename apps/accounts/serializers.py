@@ -1,14 +1,17 @@
 """Serializers for the accounts app.
 
-Scope: registration, login, and the authenticated user's own data only.
-Deliberately no Profile model and no administrative fields.
+Scope: registration, login, the authenticated user's own data, and
+staff-only user management.
 
 Security notes:
 - ``UserSerializer`` is read-only and never includes the password or the
-  privilege fields (is_staff, is_superuser, groups, user_permissions).
+  sensitive privilege fields (is_superuser, groups, user_permissions). It
+  exposes ``is_staff`` so the SPA can gate the staff-only admin area.
 - ``RegisterSerializer`` only accepts username/email/password; any other
   key a client sends (e.g. is_staff) is ignored, so a client can never
   grant itself privileges.
+- ``AdminUserSerializer`` is only used behind ``IsAdminUser`` and never
+  accepts or returns a password.
 - Passwords are validated with Django's configured AUTH_PASSWORD_VALIDATORS
   and hashed by ``User.objects.create_user``.
 """
@@ -26,8 +29,55 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ["id", "username", "email", "first_name", "last_name", "date_joined"]
+        fields = [
+            "id",
+            "username",
+            "email",
+            "first_name",
+            "last_name",
+            "is_staff",
+            "date_joined",
+        ]
         read_only_fields = fields
+
+
+class AdminUserSerializer(serializers.ModelSerializer):
+    """Staff-facing editable user fields; never accepts or returns a password."""
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "username",
+            "email",
+            "first_name",
+            "last_name",
+            "is_active",
+            "is_staff",
+            "date_joined",
+        ]
+        read_only_fields = ["id", "date_joined"]
+
+    def validate_username(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("The username is required.")
+        duplicates = User.objects.filter(username__iexact=value)
+        if self.instance is not None:
+            duplicates = duplicates.exclude(pk=self.instance.pk)
+        if duplicates.exists():
+            raise serializers.ValidationError("A user with that username already exists.")
+        return value
+
+    def validate_email(self, value):
+        if not value:
+            return value
+        duplicates = User.objects.filter(email__iexact=value)
+        if self.instance is not None:
+            duplicates = duplicates.exclude(pk=self.instance.pk)
+        if duplicates.exists():
+            raise serializers.ValidationError("A user with that email already exists.")
+        return value
 
 
 class RegisterSerializer(serializers.ModelSerializer):

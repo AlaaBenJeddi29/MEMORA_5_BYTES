@@ -1,0 +1,283 @@
+/* ==================================================================
+   MEMORA — My account
+   A calm identity page: a soft profile header, the read-only account
+   facts, and an honest note about what cannot be edited yet.
+   Shared tokens and components live in global.css.
+   ================================================================== */
+
+.account-page {
+  min-width: 0;
+}
+
+.account-page .page-header {
+  margin-bottom: var(--space-5);
+}
+
+.account-page .page-header__desc {
+  max-width: 40rem;
+}
+
+/* ------------------------------------------------------------------ *
+ * 1. Identity header
+ * ------------------------------------------------------------------ */
+.account-hero {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-4) var(--space-5);
+  margin: 0 0 var(--space-5);
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(185, 165, 216, 0.24), transparent 44%),
+    radial-gradient(circle at 100% 100%, rgba(169, 183, 160, 0.22), transparent 46%),
+    var(--surface);
+}
+
+.account-hero__avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 5.25rem;
+  height: 5.25rem;
+  border-radius: 50%;
+  border: 1px solid rgba(53, 38, 63, 0.12);
+  background: var(--surface);
+  box-shadow: 0 0 0 6px rgba(233, 224, 242, 0.55);
+  color: var(--plum);
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.account-hero__body {
+  min-width: 0;
+}
+
+.account-hero__body .eyebrow {
+  margin: 0 0 var(--space-1);
+}
+
+.account-hero__body h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(1.8rem, 1.5rem + 1.2vw, 2.5rem);
+  font-weight: 500;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.account-hero__handle {
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.account-hero__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4) var(--space-6);
+  margin: 0;
+  padding-left: var(--space-5);
+  border-left: 1px solid var(--border);
+}
+
+.account-hero__facts dt {
+  margin: 0 0 var(--space-1);
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.account-hero__facts dd {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.account-hero__facts dd .icon {
+  color: var(--primary);
+}
+
+/* ------------------------------------------------------------------ *
+ * 2. Details and note panels
+ * ------------------------------------------------------------------ */
+.account-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-4);
+}
+
+.account-panel {
+  min-width: 0;
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.account-panel__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.account-panel__head h2 {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-lg);
+}
+
+.account-panel__head p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.account-panel__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface-muted);
+  color: var(--primary);
+}
+
+.account-panel__icon--round {
+  background: var(--accent-soft);
+  border-color: transparent;
+}
+
+.account-page .account-facts.detail-list {
+  margin: 0;
+  border-radius: var(--radius-md);
+}
+
+.account-page .account-facts .detail-list__row {
+  padding: var(--space-3) var(--space-4);
+}
+
+.account-page .account-facts .detail-list__row dt {
+  flex-basis: 8rem;
+}
+
+.account-panel--note {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(185, 165, 216, 0.2), transparent 50%),
+    var(--surface-muted);
+}
+
+.account-panel--note h2 {
+  margin: var(--space-3) 0 var(--space-2);
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.account-panel--note > p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.account-panel--note code {
+  padding: 0.05rem 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  font-size: 0.8em;
+  overflow-wrap: anywhere;
+}
+
+.account-note-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: var(--space-4) 0 0;
+  padding: var(--space-4) 0 0;
+  border-top: 1px solid var(--border);
+  list-style: none;
+}
+
+.account-note-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.account-note-list .icon {
+  flex: none;
+  margin-top: 0.2rem;
+  color: var(--primary);
+}
+
+/* ------------------------------------------------------------------ *
+ * 3. Responsive
+ * ------------------------------------------------------------------ */
+@media (max-width: 980px) {
+  .account-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .account-hero {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .account-hero__facts {
+    grid-column: 1 / -1;
+    padding: var(--space-4) 0 0;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+}
+
+@media (max-width: 560px) {
+  .account-hero {
+    grid-template-columns: 1fr;
+    justify-items: start;
+    padding: var(--space-4);
+  }
+
+  .account-hero__avatar {
+    width: 4.25rem;
+    height: 4.25rem;
+    font-size: var(--text-xl);
+  }
+
+  .account-panel {
+    padding: var(--space-4);
+  }
+
+  .account-page .account-facts .detail-list__row {
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .account-page .account-facts .detail-list__row dt {
+    flex-basis: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .account-hero__avatar {
+    transition: none;
+  }
+}
