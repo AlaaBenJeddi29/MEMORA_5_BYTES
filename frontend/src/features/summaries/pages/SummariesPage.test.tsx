@@ -936,7 +936,7 @@ describe('SummariesPage memory book', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Close book' }))
 
-    expect(screen.getByRole('heading', { name: 'Summaries' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Reflections' })).toBeTruthy()
     expect(document.title).toBe('Summaries · MEMORA')
     expect(document.activeElement).toBe(
       screen.getByRole('button', { name: 'Open memory book' }),

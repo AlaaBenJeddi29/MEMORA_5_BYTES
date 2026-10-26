@@ -36,6 +36,8 @@ export const journalApi = {
   list: (page = 1, pageSize?: number) =>
     apiRequest<JournalPage>(buildListUrl(page, pageSize)),
 
+  listAll: listAllEntries,
+
   get: (id: number) =>
     apiRequest<JournalEntry>(`${BASE}${id}/`),
 
