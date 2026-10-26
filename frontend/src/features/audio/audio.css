@@ -727,10 +727,110 @@
 .audio-card__footer {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
   gap: var(--space-2);
   padding-top: var(--space-3);
   border-top: 1px solid var(--border);
+}
+
+/* Three-column body and analysis rows used by the accessible card. */
+.audio-card__body {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.audio-card__column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.audio-card__result-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-muted);
+}
+
+.audio-card__result-row--positive {
+  border-color: var(--success-border);
+  background: var(--success-bg);
+}
+
+.audio-card__result-row--positive .audio-card__result-value {
+  color: var(--success);
+}
+
+.audio-card__result-row--negative {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+}
+
+.audio-card__result-row--negative .audio-card__result-value {
+  color: var(--danger);
+}
+
+.audio-card__result-row--neutral {
+  border-color: var(--border);
+  background: var(--surface-muted);
+}
+
+.audio-card__footer-start,
+.audio-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.audio-card__actions {
+  margin-inline-start: auto;
+}
+
+/* Read-aloud controls shared by every memo card. */
+.read-aloud {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.read-aloud__controls {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.read-aloud__status {
+  margin: 0;
+  padding-inline-start: var(--space-2);
+  border-left: 3px solid var(--primary);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.read-aloud__error {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--danger);
+}
+
+/* Shown once when the browser has no speech synthesis at all. */
+.audio-page__notice {
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-md);
+  background: var(--warning-bg);
+  color: var(--warning);
+  font-size: var(--text-sm);
 }
 
 /* ------------------------------------------------------------------ *
@@ -773,6 +873,10 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .audio-card__body {
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  }
+
   .audio-upload {
     flex-direction: row;
     flex-wrap: wrap;
@@ -791,6 +895,24 @@
 @media (max-width: 680px) {
   .audio-card {
     padding: 1.05rem 1rem 0.95rem;
+  }
+
+  .audio-card__body {
+    grid-template-columns: 1fr;
+  }
+
+  .audio-card__footer {
+    align-items: stretch;
+  }
+
+  .audio-card__footer-start,
+  .audio-card__actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .audio-card__actions .btn {
+    flex: 1 1 auto;
   }
 
   .audio-card__signals {
