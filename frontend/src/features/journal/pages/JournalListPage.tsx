@@ -9,15 +9,11 @@ import { PageHeader } from '../../../components/PageHeader'
 import { useDocumentTitle } from '../../../hooks/useDocumentTitle'
 import { journalApi } from '../../../services/journal'
 import { normalizeApiError } from '../../../services/errors'
-import type {
-  JournalEntry,
-  JournalEntryInput,
-  JournalPage,
-  JournalSearchParams,
-} from '../../../types/journal'
+import type { JournalEntry, JournalPage, JournalSearchParams, AdvancedSearchParams, AdvancedSearchResult } from '../../../types/journal'
 import { JournalEntryForm } from '../components/JournalEntryForm'
 import { JournalEntryList } from '../components/JournalEntryList'
 import { JournalSearch } from '../components/JournalSearch'
+import { AdvancedSearchAnalysis } from '../components/AdvancedSearchAnalysis'
 import '../journal.css'
 
 interface JournalLocationState {
@@ -37,21 +33,9 @@ export function JournalListPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [editingEntry, setEditingEntry] = useState<JournalEntry | null>(null)
-  const [showForm, setShowForm] = useState(() => Boolean(routeState?.prefillText))
-  const [prefill, setPrefill] = useState<Partial<JournalEntryInput> | null>(() =>
-    routeState?.prefillText
-      ? { title: routeState.prefillTitle ?? '', text: routeState.prefillText }
-      : null,
-  )
-  const [filters, setFilters] = useState<JournalSearchParams>({})
-  const [reloadKey, setReloadKey] = useState(0)
-  const [openingEntry, setOpeningEntry] = useState(false)
-
-  const consumedEditRef = useRef<string | null>(null)
-
-  const wantsNew = urlParams.get('new') === '1'
-  const editIdParam = urlParams.get('edit')
-  const hasActiveFilters = Object.values(filters).some((value) => value !== undefined)
+  const [showForm, setShowForm] = useState(false)
+  const [searchParams, setSearchParams] = useState<JournalSearchParams | AdvancedSearchParams>({})
+  const [advancedResult, setAdvancedResult] = useState<AdvancedSearchResult | null>(null)
 
   // Load entries on mount and whenever the page, filters or explicit reload change.
   useEffect(() => {
@@ -61,10 +45,30 @@ export function JournalListPage() {
       setLoading(true)
       setError(null)
       try {
-        const result = hasActiveFilters
-          ? await journalApi.search({ ...filters, page: currentPage })
-          : await journalApi.list(currentPage)
-        if (active) setEntries(result)
+        let result
+        const hasActiveFilters = Object.values(searchParams).some((v) => v !== undefined && v !== false)
+        
+        if (hasActiveFilters) {
+          const params = searchParams as JournalSearchParams | AdvancedSearchParams
+          if ('isAdvanced' in params && params.isAdvanced === true) {
+            const advancedResult = await journalApi.advancedSearch(params as AdvancedSearchParams)
+            setAdvancedResult(advancedResult)
+            // Build a fake JournalPage from the result
+            result = {
+              count: advancedResult.total,
+              next: null,
+              previous: null,
+              results: advancedResult.results,
+            }
+          } else {
+            setAdvancedResult(null)
+            result = await journalApi.search(params as JournalSearchParams)
+          }
+        } else {
+          setAdvancedResult(null)
+          result = await journalApi.list(currentPage)
+        }
+        setEntries(result)
       } catch (err) {
         if (!active) return
         const normalized = normalizeApiError(err)
@@ -172,13 +176,8 @@ export function JournalListPage() {
     [closeComposer, editingEntry, refresh],
   )
 
-  const handleSearch = useCallback((params: JournalSearchParams) => {
-    setFilters(params)
-    setCurrentPage(1)
-  }, [])
-
-  const handleClearFilters = useCallback(() => {
-    setFilters({})
+  const handleSearch = useCallback((params: JournalSearchParams | AdvancedSearchParams) => {
+    setSearchParams(params)
     setCurrentPage(1)
   }, [])
 
@@ -221,6 +220,12 @@ export function JournalListPage() {
             </Button>
           </div>
         </Alert>
+      )}
+
+      <JournalSearch onSearch={handleSearch} isLoading={loading} />
+
+      {advancedResult?.ai_analysis && (
+        <AdvancedSearchAnalysis analysis={advancedResult.ai_analysis} />
       )}
 
       {showForm && (
