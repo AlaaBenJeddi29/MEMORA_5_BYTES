@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}Connexion · MEMORA{% endblock %}
+
+{% block content %}
+<section class="auth-page" aria-labelledby="auth-heading">
+    <p class="eyebrow">MEMORA</p>
+    <h1 id="auth-heading">Connexion</h1>
+    <p class="auth-lede">Accédez à votre journal privé et à vos souvenirs.</p>
+
+    {% if form.non_field_errors %}
+        <div class="form-alert" role="alert">
+            <strong>Connexion impossible.</strong>
+            <ul>
+                {% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}
+            </ul>
+        </div>
+    {% endif %}
+
+    <form method="post" class="auth-card" novalidate>
+        {% csrf_token %}
+        {% for field in form %}
+            {% include "accounts/_field.html" %}
+        {% endfor %}
+        <input type="hidden" name="next" value="{{ next }}">
+        <button type="submit" class="button-primary">Se connecter</button>
+    </form>
+
+    <p class="auth-switch">
+        <a href="{% url 'password_reset' %}">Mot de passe oublié ?</a>
+    </p>
+    <p class="auth-switch">
+        Pas encore de compte ? Créez-le depuis l’application MEMORA, puis
+        vérifiez votre adresse email avant la première connexion.
+    </p>
+</section>
+{% endblock %}

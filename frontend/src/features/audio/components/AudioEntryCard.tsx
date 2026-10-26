@@ -8,6 +8,13 @@
  * the corrected text is what gets reused in the journal. From the same edit mode
  * the recording can be replaced — picked as a file or re-recorded with the
  * microphone — which sends the entry back through the AI pipeline.
+ * Each finished text can also be read aloud (components/ReadAloudControls.tsx,
+ * browser speech synthesis) without touching the recorded file.
+ *
+ * Layout: a wide card — header (date, duration, status), then three columns
+ * that use the available width (player + language | sentiment + summary |
+ * transcript), then the action row (replace on the left, edit / journal /
+ * delete on the right). Below 720px the columns stack.
  */
 
 import { useRef, useState } from 'react'
@@ -15,7 +22,8 @@ import { useRef, useState } from 'react'
 import { StatusBadge } from '../../../components/StatusBadge'
 import { Button } from '../../../components/Button'
 import { ConfirmDialog } from '../../../components/ConfirmDialog'
-import { Icon } from '../../../components/Icon'
+import { ReadAloudControls } from '../../../components/ReadAloudControls'
+import type { JournalAction } from '../hooks/useTranscriptJournal'
 import { AudioReplaceRecorder } from './AudioReplaceRecorder'
 import type { AudioEntryPatch } from '../services/audio'
 import type { AudioEntry } from '../types/audio'
@@ -23,9 +31,25 @@ import type { AudioEntry } from '../types/audio'
 interface AudioEntryCardProps {
   entry: AudioEntry
   onDelete: (id: number) => void
-  onUseTranscript?: (transcript: string) => void
+  /** Receives the whole entry: the journal keeps the transcript plus its AI results. */
+  onUseTranscript?: (entry: AudioEntry) => void
+  /** Journal injection state of this entry (idle → saving → saved). */
+  journalAction?: JournalAction
   /** Resolves false when the API rejected the edit, keeping the draft on screen. */
   onUpdate: (id: number, patch: AudioEntryPatch) => Promise<boolean>
+}
+
+const SENTIMENT_EMOJI: Record<string, string> = {
+  positive: '😊',
+  negative: '😔',
+  neutral:  '😐',
+  mixed:    '🤔',
+}
+
+const LANGUAGE_FLAG: Record<string, string> = {
+  fr: '🇫🇷', en: '🇬🇧', ar: '🇸🇦', de: '🇩🇪', es: '🇪🇸',
+  it: '🇮🇹', pt: '🇵🇹', zh: '🇨🇳', ja: '🇯🇵', ru: '🇷🇺',
+  nl: '🇳🇱', pl: '🇵🇱', tr: '🇹🇷', ko: '🇰🇷', hi: '🇮🇳',
 }
 
 function formatDate(iso: string): string {
@@ -42,7 +66,16 @@ function formatDuration(secs: number | null): string {
   return m > 0 ? `${m}m ${s}s` : `${s}s`
 }
 
-export function AudioEntryCard({ entry, onDelete, onUseTranscript, onUpdate }: AudioEntryCardProps) {
+export function AudioEntryCard({
+  entry,
+  onDelete,
+  onUseTranscript,
+  journalAction = 'idle',
+  onUpdate,
+}: AudioEntryCardProps) {
+  const sentimentEmoji = entry.sentiment ? SENTIMENT_EMOJI[entry.sentiment] ?? '❓' : ''
+  const langFlag       = entry.language_code ? (LANGUAGE_FLAG[entry.language_code] ?? '🌐') : ''
+
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [replacing, setReplacing] = useState(false)
@@ -59,6 +92,10 @@ export function AudioEntryCard({ entry, onDelete, onUseTranscript, onUpdate }: A
 
   // The API refuses edits while the worker may still overwrite them (409).
   const editable = entry.status === 'succeeded' || entry.status === 'failed'
+  // The three analysis columns; also shown to type a failed memo by hand.
+  const analysed = entry.status === 'succeeded' || editing
+  // "Use in journal" needs a transcript to send, so it appears with one only.
+  const canUseInJournal = analysed && !editing && Boolean(entry.transcript) && Boolean(onUseTranscript)
 
   function startEdit() {
     setTranscriptDraft(entry.transcript ?? '')
@@ -113,163 +150,143 @@ export function AudioEntryCard({ entry, onDelete, onUseTranscript, onUpdate }: A
 
   return (
     <article
-      className={`audio-card audio-card--${entry.status}`}
+      className="audio-card"
       aria-label={`Voice memo from ${formatDate(entry.created_at)}`}
     >
       {/* ── Header ── */}
       <div className="audio-card__header">
         <div className="audio-card__meta">
-          <span className="audio-card__mark" aria-hidden="true">
-            <Icon name="wave" size={18} />
-          </span>
-          <div className="audio-card__meta-text">
-            <time className="audio-card__date" dateTime={entry.created_at}>
-              {formatDate(entry.created_at)}
-            </time>
-            {entry.duration_seconds !== null && (
-              <span className="audio-card__duration">
-                <Icon name="clock" size={12} />
-                {formatDuration(entry.duration_seconds)}
-              </span>
-            )}
-          </div>
+          <time className="audio-card__date" dateTime={entry.created_at}>
+            {formatDate(entry.created_at)}
+          </time>
+          {entry.duration_seconds !== null && (
+            <span className="audio-card__duration">
+              ⏱ {formatDuration(entry.duration_seconds)}
+            </span>
+          )}
         </div>
         <StatusBadge
           status={
-            entry.status === 'succeeded'
-              ? 'succeeded'
-              : entry.status === 'failed'
-                ? 'failed'
-                : entry.status === 'processing'
-                  ? 'processing'
-                  : 'pending'
+            entry.status === 'succeeded' ? 'succeeded'
+            : entry.status === 'failed'  ? 'failed'
+            : entry.status === 'processing' ? 'processing'
+            : 'pending'
           }
         />
       </div>
 
-      {/* ── Audio player ── */}
-      {entry.file && (
-        <div className="audio-card__player">
-          <span className="audio-card__player-label">Recording</span>
-          <audio controls src={entry.file} className="audio-card__audio" />
+      {/* ── Body: playback | analysis | transcript, side by side when there is room ── */}
+      <div className="audio-card__body">
+        {/* ① The recording itself, then the language it was spoken in */}
+        <div className="audio-card__column audio-card__column--playback">
+          {entry.file && (
+            <div className="audio-card__player">
+              <audio controls src={entry.file} className="audio-card__audio" />
+            </div>
+          )}
+
+          {/* Processing indicator */}
+          {(entry.status === 'pending' || entry.status === 'processing') && (
+            <p className="audio-card__processing" role="status" aria-live="polite">
+              ⏳ Analysing your voice memo…
+            </p>
+          )}
+
+          {analysed && entry.language_name && (
+            <div className="audio-card__result-row audio-card__result-row--language">
+              <span className="audio-card__result-icon" aria-hidden="true">{langFlag}</span>
+              <div>
+                <span className="audio-card__result-label">Language detected</span>
+                <span className="audio-card__result-value">{entry.language_name}</span>
+                {entry.language_code && (
+                  <span className="audio-card__result-badge">{entry.language_code.toUpperCase()}</span>
+                )}
+              </div>
+            </div>
+          )}
         </div>
-      )}
 
-      {/* ── Processing indicator ── */}
-      {(entry.status === 'pending' || entry.status === 'processing') && (
-        <p className="audio-card__processing" role="status" aria-live="polite">
-          <span className="audio-card__pulse" aria-hidden="true" />
-          <span>
-            Analysing your voice memo…
-            <small>Transcript, language, sentiment and summary run on your server.</small>
-          </span>
-        </p>
-      )}
-
-      {/* ── AI Results ── (also while editing a failed memo: the transcript
-           saved from the audio is null, but a hand-written one can be added) */}
-      {(entry.status === 'succeeded' || editing) && (
-        <div className="audio-card__results">
-          {(entry.language_name || entry.sentiment) && (
-            <div className="audio-card__signals">
-              {entry.language_name && (
-                <div className="audio-card__signal">
-                  <span className="audio-card__result-icon" aria-hidden="true">
-                    <Icon name="compass" size={16} />
+        {/* ② Sentiment + summary (also while editing a failed memo: the
+            transcript saved from the audio is null, but a hand-written one
+            can be added) */}
+        {analysed && (
+          <div className="audio-card__column audio-card__column--analysis">
+            {entry.sentiment && (
+              <div className={`audio-card__result-row audio-card__result-row--sentiment audio-card__result-row--${entry.sentiment}`}>
+                <span className="audio-card__result-icon" aria-hidden="true">{sentimentEmoji}</span>
+                <div>
+                  <span className="audio-card__result-label">Sentiment</span>
+                  <span className="audio-card__result-value">
+                    {entry.sentiment.charAt(0).toUpperCase() + entry.sentiment.slice(1)}
                   </span>
-                  <div>
-                    <span className="audio-card__result-label">Language detected</span>
-                    <span className="audio-card__result-value">{entry.language_name}</span>
-                    {entry.language_code && (
-                      <span className="audio-card__result-badge">
-                        {entry.language_code.toUpperCase()}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {entry.sentiment && (
-                <div
-                  className={`audio-card__signal audio-card__signal--${entry.sentiment}`}
-                >
-                  <span className="audio-card__result-icon" aria-hidden="true">
-                    <Icon name="heart" size={16} />
-                  </span>
-                  <div>
-                    <span className="audio-card__result-label">Sentiment</span>
-                    <span className="audio-card__result-value">
-                      {entry.sentiment.charAt(0).toUpperCase() + entry.sentiment.slice(1)}
+                  {entry.sentiment_score !== null && (
+                    <span className="audio-card__result-badge">
+                      {Math.round(entry.sentiment_score * 100)}% confidence
                     </span>
-                    {entry.sentiment_score !== null && (
-                      <span className="audio-card__result-badge">
-                        {Math.round(entry.sentiment_score * 100)}% confidence
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ③ Summary */}
-          {(entry.summary || editing) && (
-            <div className="audio-card__result-block">
-              <h3 className="audio-card__result-label">
-                <Icon name="sparkles" size={14} />
-                Summary
-              </h3>
-              {editing ? (
-                <textarea
-                  className="audio-card__edit-field"
-                  aria-label="Edit summary"
-                  value={summaryDraft}
-                  rows={3}
-                  onChange={(e) => setSummaryDraft(e.target.value)}
-                />
-              ) : (
-                <p className="audio-card__summary-text">{entry.summary}</p>
-              )}
-            </div>
-          )}
-
-          {/* ④ Transcript */}
-          {(entry.transcript || editing) && (
-            <div className="audio-card__result-block">
-              <h3 className="audio-card__result-label">
-                <Icon name="mic" size={14} />
-                Transcript
-              </h3>
-              {editing ? (
-                <textarea
-                  className="audio-card__edit-field"
-                  aria-label="Edit transcript"
-                  value={transcriptDraft}
-                  rows={5}
-                  onChange={(e) => setTranscriptDraft(e.target.value)}
-                />
-              ) : (
-                <>
-                  <p className="audio-card__transcript-text">{entry.transcript}</p>
-                  {onUseTranscript && (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="audio-card__use"
-                      onClick={() => onUseTranscript(entry.transcript!)}
-                      aria-label="Use transcript in journal entry"
-                    >
-                      <Icon name="pen" size={14} />
-                      Use in journal
-                      <Icon name="arrowRight" size={14} />
-                    </Button>
                   )}
-                </>
-              )}
-            </div>
-          )}
-        </div>
-      )}
+                </div>
+              </div>
+            )}
+
+            {(entry.summary || editing) && (
+              <div className="audio-card__result-block">
+                <h3 className="audio-card__result-label">📋 Summary</h3>
+                {editing ? (
+                  <textarea
+                    className="audio-card__edit-field"
+                    aria-label="Edit summary"
+                    value={summaryDraft}
+                    rows={3}
+                    onChange={(e) => setSummaryDraft(e.target.value)}
+                  />
+                ) : (
+                  <>
+                    <p className="audio-card__summary-text">{entry.summary}</p>
+                    <ReadAloudControls
+                      entryId={entry.id}
+                      field="summary"
+                      text={entry.summary}
+                      lang={entry.language_code}
+                      subject={`the summary of the memo from ${formatDate(entry.created_at)}`}
+                    />
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ③ Transcript */}
+        {analysed && (
+          <div className="audio-card__column audio-card__column--transcript">
+            {(entry.transcript || editing) && (
+              <div className="audio-card__result-block">
+                <h3 className="audio-card__result-label">🎙 Transcript</h3>
+                {editing ? (
+                  <textarea
+                    className="audio-card__edit-field"
+                    aria-label="Edit transcript"
+                    value={transcriptDraft}
+                    rows={5}
+                    onChange={(e) => setTranscriptDraft(e.target.value)}
+                  />
+                ) : (
+                  <>
+                    <p className="audio-card__transcript-text">{entry.transcript}</p>
+                    <ReadAloudControls
+                      entryId={entry.id}
+                      field="transcript"
+                      text={entry.transcript}
+                      lang={entry.language_code}
+                      subject={`the transcript of the memo from ${formatDate(entry.created_at)}`}
+                    />
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* ── Microphone re-recording (only while editing) ── */}
       {editing && recorderOpen && (
@@ -278,16 +295,13 @@ export function AudioEntryCard({ entry, onDelete, onUseTranscript, onUpdate }: A
 
       {/* ── Error ── */}
       {entry.status === 'failed' && entry.error && (
-        <p className="audio-card__error" role="alert">
-          <Icon name="alert" size={16} />
-          <span>{entry.error}</span>
-        </p>
+        <p className="audio-card__error" role="alert">⚠ {entry.error}</p>
       )}
 
-      {/* ── Footer ── */}
+      {/* ── Footer: secondary action left, main actions right-aligned ── */}
       <div className="audio-card__footer">
         {editing ? (
-          <>
+          <div className="audio-card__actions">
             <Button
               variant="ghost"
               size="sm"
@@ -295,26 +309,19 @@ export function AudioEntryCard({ entry, onDelete, onUseTranscript, onUpdate }: A
               disabled={saving || replacing}
               aria-label="Re-record this memo with the microphone"
             >
-              <Icon name="mic" size={14} />
-              {recorderOpen ? 'Hide recorder' : 'Re-record'}
+              {recorderOpen ? 'Hide recorder' : '🎙 Re-record'}
             </Button>
-            <Button
-              size="sm"
-              onClick={saveEdit}
-              disabled={saving || replacing}
-              aria-label="Save your corrections"
-            >
-              <Icon name="check" size={14} />
+            <Button size="sm" onClick={saveEdit} disabled={saving || replacing} aria-label="Save your corrections">
               {saving ? 'Saving…' : 'Save changes'}
             </Button>
             <Button variant="ghost" size="sm" onClick={cancelEdit} disabled={saving || replacing}>
               Cancel
             </Button>
-          </>
+          </div>
         ) : (
           <>
             {editable && (
-              <>
+              <div className="audio-card__footer-start">
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -331,28 +338,49 @@ export function AudioEntryCard({ entry, onDelete, onUseTranscript, onUpdate }: A
                   disabled={replacing}
                   aria-controls={inputId}
                 >
-                  <Icon name="repeat" size={14} />
-                  {replacing ? 'Replacing…' : 'Replace audio'}
+                  {replacing ? 'Replacing…' : '🔁 Replace audio'}
                 </Button>
+              </div>
+            )}
+            <div className="audio-card__actions">
+              {editable && (
                 <Button
                   variant="secondary"
                   size="sm"
                   onClick={startEdit}
                   aria-label={`Edit the transcript of the memo from ${formatDate(entry.created_at)}`}
                 >
-                  <Icon name="edit" size={14} />
-                  Edit
+                  ✏️ Edit
                 </Button>
-              </>
-            )}
-            <Button
-              variant="danger"
-              size="sm"
-              onClick={() => setConfirmDeleteOpen(true)}
-              aria-label={`Delete voice memo from ${formatDate(entry.created_at)}`}
-            >
-              Delete
-            </Button>
+              )}
+              {canUseInJournal && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => onUseTranscript?.(entry)}
+                  disabled={journalAction === 'saving'}
+                  aria-label={
+                    journalAction === 'saved'
+                      ? 'Open this memo in the journal'
+                      : 'Use transcript in journal entry'
+                  }
+                >
+                  {journalAction === 'saving'
+                    ? 'Adding to journal…'
+                    : journalAction === 'saved'
+                    ? '📓 In your journal'
+                    : '📝 Use in journal'}
+                </Button>
+              )}
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => setConfirmDeleteOpen(true)}
+                aria-label={`Delete voice memo from ${formatDate(entry.created_at)}`}
+              >
+                Delete
+              </Button>
+            </div>
           </>
         )}
       </div>

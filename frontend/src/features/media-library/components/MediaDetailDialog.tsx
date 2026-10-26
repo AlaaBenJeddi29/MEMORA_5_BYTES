@@ -7,7 +7,7 @@ import { Icon } from '../../../components/Icon'
 import { StatusBadge } from '../../../components/StatusBadge'
 import { normalizeApiError, type NormalizedErrors } from '../../../services/errors'
 import { mediaApi } from '../../../services/media'
-import type { MediaItem } from '../../../types/media'
+import type { MediaCollection, MediaItem } from '../../../types/media'
 import { formatDateTime } from '../../../utils/format'
 import {
   EMPTY_ERRORS,
@@ -15,21 +15,43 @@ import {
   MAX_PROMPT_LENGTH,
   MEDIA_TYPE_LABELS,
 } from '../mediaHelpers'
+import { CollectionMembership } from './CollectionMembership'
+import { FavoriteButton } from './FavoriteButton'
 import { MediaImage } from './MediaImage'
 import { Modal } from './Modal'
 
 export interface MediaDetailDialogProps {
   media: MediaItem
+  collections: MediaCollection[]
+  collectionsLoading: boolean
+  collectionsError: string | null
+  favoriteBusy: boolean
+  membershipBusyIds: number[]
+  membershipError: string | null
   onClose: () => void
   onUpdated: (media: MediaItem) => void
   onDelete: (media: MediaItem) => void
+  onToggleFavorite: (media: MediaItem) => void
+  onToggleCollection: (
+    collection: MediaCollection,
+    media: MediaItem,
+    shouldAdd: boolean,
+  ) => void
 }
 
 export function MediaDetailDialog({
   media,
+  collections,
+  collectionsLoading,
+  collectionsError,
+  favoriteBusy,
+  membershipBusyIds,
+  membershipError,
   onClose,
   onUpdated,
   onDelete,
+  onToggleFavorite,
+  onToggleCollection,
 }: MediaDetailDialogProps) {
   const promptHeadingId = useId()
   const [editing, setEditing] = useState(false)
@@ -96,6 +118,13 @@ export function MediaDetailDialog({
           <figcaption className="media-detail__caption">
             <StatusBadge status={media.status} />
             <span>Added {formatDateTime(media.created_at)}</span>
+            <FavoriteButton
+              media={media}
+              busy={favoriteBusy}
+              showLabel
+              className="media-detail__favorite"
+              onToggle={onToggleFavorite}
+            />
           </figcaption>
         </figure>
 
@@ -154,6 +183,16 @@ export function MediaDetailDialog({
               <dd>{formatDateTime(media.updated_at)}</dd>
             </div>
           </dl>
+
+          <CollectionMembership
+            media={media}
+            collections={collections}
+            loading={collectionsLoading}
+            collectionsError={collectionsError}
+            busyIds={membershipBusyIds}
+            error={membershipError}
+            onToggle={onToggleCollection}
+          />
 
           <section className="media-detail__prompt-section" aria-labelledby={promptHeadingId}>
             <div className="media-detail__section-head">

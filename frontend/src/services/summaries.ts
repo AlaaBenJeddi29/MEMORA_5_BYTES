@@ -1,5 +1,23 @@
-import type { GenerateSummaryInput, Summary, SummaryInput } from '../types/summaries'
+import type {
+  GenerateSummaryInput,
+  Summary,
+  SummaryInput,
+  SummarySearchPage,
+  SummarySearchParams,
+} from '../types/summaries'
 import { apiRequest } from './apiClient'
+
+/** Matches the backend default for the summaries search endpoint. */
+export const SUMMARY_SEARCH_PAGE_SIZE = 20
+
+function buildSearchUrl(params: SummarySearchParams): string {
+  const search = new URLSearchParams({
+    q: params.q,
+    page: String(params.page ?? 1),
+    page_size: String(params.page_size ?? SUMMARY_SEARCH_PAGE_SIZE),
+  })
+  return `/api/summaries/search/?${search.toString()}`
+}
 
 /**
  * Summaries API. All requests go through the shared client, so the session
@@ -9,6 +27,12 @@ import { apiRequest } from './apiClient'
 export const summariesApi = {
   /** GET /api/summaries/ — the signed-in user's summaries. */
   list: () => apiRequest<Summary[]>('/api/summaries/'),
+
+  /** GET /api/summaries/search/ — owner-scoped concept search (read-only). */
+  search: (params: SummarySearchParams, options: { signal?: AbortSignal } = {}) =>
+    apiRequest<SummarySearchPage>(buildSearchUrl(params), {
+      signal: options.signal,
+    }),
 
   /** POST /api/summaries/ — manual create; Django assigns the owner. */
   create: (input: SummaryInput) =>

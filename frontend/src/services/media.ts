@@ -1,5 +1,8 @@
 import type {
+  CollectionInput,
   GenerateImageInput,
+  MediaCollection,
+  MediaCollectionDetail,
   MediaItem,
   UpdateMediaInput,
 } from '../types/media'
@@ -28,9 +31,47 @@ export const mediaApi = {
 
   remove: (id: number) => apiRequest<void>(`/api/media/${id}/`, { method: 'DELETE' }),
 
+  setFavorite: (id: number, isFavorite: boolean) =>
+    apiRequest<MediaItem>(`/api/media/${id}/favorite/`, {
+      method: 'PATCH',
+      body: { is_favorite: isFavorite },
+    }),
+
   /** The Django backend is the only caller of local ComfyUI. */
   generate: (input: GenerateImageInput) =>
     apiRequest<MediaItem>('/api/media/generate/', { method: 'POST', body: input }),
+
+  listCollections: () => apiRequest<MediaCollection[]>('/api/media/collections/'),
+
+  createCollection: (input: CollectionInput) =>
+    apiRequest<MediaCollection>('/api/media/collections/', {
+      method: 'POST',
+      body: input,
+    }),
+
+  getCollection: (id: number) =>
+    apiRequest<MediaCollectionDetail>(`/api/media/collections/${id}/`),
+
+  updateCollection: (id: number, input: CollectionInput) =>
+    apiRequest<MediaCollection>(`/api/media/collections/${id}/`, {
+      method: 'PATCH',
+      body: input,
+    }),
+
+  removeCollection: (id: number) =>
+    apiRequest<void>(`/api/media/collections/${id}/`, { method: 'DELETE' }),
+
+  addToCollection: (collectionId: number, mediaId: number) =>
+    apiRequest<MediaItem>(`/api/media/collections/${collectionId}/items/`, {
+      method: 'POST',
+      body: { media_id: mediaId },
+    }),
+
+  removeFromCollection: (collectionId: number, mediaId: number) =>
+    apiRequest<void>(
+      `/api/media/collections/${collectionId}/items/${mediaId}/`,
+      { method: 'DELETE' },
+    ),
 }
 
 /**

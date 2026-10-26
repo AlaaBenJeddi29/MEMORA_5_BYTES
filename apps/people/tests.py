@@ -41,9 +41,9 @@ def image_upload(name='photo.png', size=(20, 20), mode='RGB'):
 
 class SuggestionTests(TestCase):
     def setUp(self):
-        self.user = User.objects.create_user(username='alice', password='secret')
-        self.other_user = User.objects.create_user(username='bob', password='secret')
-        self.third_user = User.objects.create_user(username='charlie', password='secret')
+        self.user = User.objects.create_user(username='alice', email='alice@example.com', password='secret')
+        self.other_user = User.objects.create_user(username='bob', email='bob@example.com', password='secret')
+        self.third_user = User.objects.create_user(username='charlie', email='charlie@example.com', password='secret')
 
         self.person = Person.objects.create(owner=self.user, name='Alice')
         self.photo = create_photo(self.user)
@@ -357,7 +357,7 @@ class ProcessPhotoTests(TestCase):
 
 class SignalTests(TestCase):
     def setUp(self):
-        self.user = User.objects.create_user(username='alice', password='secret')
+        self.user = User.objects.create_user(username='alice', email='alice@example.com', password='secret')
 
     def test_process_photo_runs_when_media_is_created(self):
         with patch('apps.people.signals.process_photo') as process:
@@ -377,8 +377,8 @@ class SignalTests(TestCase):
 
 class PeopleIsolationTests(TestCase):
     def setUp(self):
-        self.user = User.objects.create_user(username='alice', password='secret')
-        self.other_user = User.objects.create_user(username='bob', password='secret')
+        self.user = User.objects.create_user(username='alice', email='alice@example.com', password='secret')
+        self.other_user = User.objects.create_user(username='bob', email='bob@example.com', password='secret')
 
         self.person = Person.objects.create(owner=self.user, name='Alice')
         self.other_person = Person.objects.create(owner=self.other_user, name='Bob')
@@ -514,13 +514,13 @@ class PeopleIsolationTests(TestCase):
         response = self.client.get(reverse('people:person_list'))
 
         self.assertEqual(response.status_code, 302)
-        self.assertIn('/admin/login/', response.url)
+        self.assertIn('/accounts/login/', response.url)
 
 
 class PeopleApiTests(TestCase):
     def setUp(self):
-        self.user = User.objects.create_user(username='alice', password='secret')
-        self.other_user = User.objects.create_user(username='bob', password='secret')
+        self.user = User.objects.create_user(username='alice', email='alice@example.com', password='secret')
+        self.other_user = User.objects.create_user(username='bob', email='bob@example.com', password='secret')
 
         self.person = Person.objects.create(owner=self.user, name='Alice')
         self.other_person = Person.objects.create(owner=self.other_user, name='Bob')

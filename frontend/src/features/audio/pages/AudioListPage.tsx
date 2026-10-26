@@ -21,7 +21,10 @@ import { Button } from '../../../components/Button'
 import { EmptyState } from '../../../components/EmptyState'
 import { Icon } from '../../../components/Icon'
 import { PageHeader } from '../../../components/PageHeader'
+import { SPEECH_UNSUPPORTED_NOTICE_ID } from '../../../components/ReadAloudControls'
 import { useDocumentTitle } from '../../../hooks/useDocumentTitle'
+import { useSpeech, useStopSpeechOnLeave } from '../../../hooks/useSpeech'
+import { UNSUPPORTED_MESSAGE } from '../../../utils/speech'
 import { AudioEntryCard } from '../components/AudioEntryCard'
 import { VoiceRecorder } from '../components/VoiceRecorder'
 import { useAudioEntries } from '../hooks/useAudioEntries'
@@ -31,6 +34,9 @@ export function AudioListPage() {
   useDocumentTitle('Voice memos · MEMORA')
 
   const navigate = useNavigate()
+
+  const speech = useSpeech()
+  useStopSpeechOnLeave()
 
   const {
     entries,
@@ -97,6 +103,12 @@ export function AudioListPage() {
         title="Voice memos"
         description="Record or upload a thought. Your own backend transcribes it, detects the spoken language, reads the sentiment and writes a short summary."
       />
+
+      {!speech.supported && (
+        <p id={SPEECH_UNSUPPORTED_NOTICE_ID} className="audio-page__notice" role="note">
+          ⚠ {UNSUPPORTED_MESSAGE}
+        </p>
+      )}
 
       {/* ------------------------------------------------------------------ */}
       {/* Transcript injection banner                                         */}
@@ -245,7 +257,7 @@ export function AudioListPage() {
                   entry={entry}
                   onDelete={remove}
                   onUpdate={update}
-                  onUseTranscript={openInJournal}
+                  onUseTranscript={(entry) => openInJournal(entry.transcript ?? '')}
                 />
               </li>
             ))}

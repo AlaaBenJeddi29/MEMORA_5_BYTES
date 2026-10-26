@@ -8,7 +8,13 @@ from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
 from .models import JournalEntry
-from .serializers import JournalEntrySerializer
+from .search_service import AdvancedSearchService
+from .serializers import (
+    AdvancedSearchQuerySerializer,
+    AdvancedSearchResultSerializer,
+    JournalEntrySerializer,
+    JournalSearchQuerySerializer,
+)
 
 
 class JournalPagination(pagination.PageNumberPagination):
@@ -30,7 +36,8 @@ class JournalEntryViewSet(ModelViewSet):
       PUT    /api/journal/entries/{id}/      — replace a single entry
       PATCH  /api/journal/entries/{id}/      — partial update
       DELETE /api/journal/entries/{id}/      — delete an entry
-      GET    /api/journal/entries/search/    — search by title and date
+      GET    /api/journal/entries/search/    — simple search by title and date
+      POST   /api/journal/entries/advanced-search/  — AI-powered advanced search
     """
 
     permission_classes = [IsAuthenticated]
@@ -48,7 +55,7 @@ class JournalEntryViewSet(ModelViewSet):
     @action(detail=False, methods=['get'], url_path='search')
     def search(self, request):
         """
-        Search journal entries by title and date range.
+        Simple search journal entries by title and date range.
 
         Query parameters:
           q (optional)          — filter title__icontains=q
@@ -58,14 +65,20 @@ class JournalEntryViewSet(ModelViewSet):
         """
         queryset = self.get_queryset()
 
+        query_serializer = JournalSearchQuerySerializer(
+            data=request.query_params
+        )
+        query_serializer.is_valid(raise_exception=True)
+        filters = query_serializer.validated_data
+
         # Filter by title if q is provided
-        q_param = request.query_params.get('q')
+        q_param = filters.get('q')
         if q_param:
             queryset = queryset.filter(title__icontains=q_param)
 
-        # Filter by date range if provided
-        date_from = request.query_params.get('date_from')
-        date_to = request.query_params.get('date_to')
+        # Filter by a validated date range if provided
+        date_from = filters.get('date_from')
+        date_to = filters.get('date_to')
 
         if date_from:
             queryset = queryset.filter(created_at__date__gte=date_from)
@@ -80,3 +93,48 @@ class JournalEntryViewSet(ModelViewSet):
 
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['post'], url_path='advanced-search')
+    def advanced_search(self, request):
+        """
+        AI-powered advanced search with semantic analysis.
+
+        Request body:
+        {
+            "query": "I was happy in summer",
+            "date_from": "2024-06-01",
+            "date_to": "2024-08-31",
+            "sentiment": "happy",
+            "use_ai": true
+        }
+
+        Response:
+        {
+            "results": [...entries],
+            "total": 5,
+            "ai_analysis": {
+                "query": "I was happy in summer",
+                "extracted_sentiments": ["happy"],
+                "extracted_themes": ["summer", "vacation"],
+                "summary": "You wrote 5 entries during summer..."
+            }
+        }
+        """
+        request_serializer = AdvancedSearchQuerySerializer(data=request.data)
+        request_serializer.is_valid(raise_exception=True)
+        filters = request_serializer.validated_data
+
+        # Use advanced search service
+        search_service = AdvancedSearchService(request.user)
+        results = search_service.search(
+            query=filters.get('query', ''),
+            date_from=filters.get('date_from'),
+            date_to=filters.get('date_to'),
+            sentiment=filters.get('sentiment'),
+            use_ai=filters.get('use_ai', False),
+        )
+
+        # Serialize results
+        serializer = AdvancedSearchResultSerializer(results)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+

@@ -14,6 +14,14 @@ const devProxy = {
   '/media': {
     target: BACKEND_URL,
   },
+  // Server-rendered auth pages (login, password reset, email verification)
+  // and the people HTML pages share the SPA's origin in development.
+  '/accounts': {
+    target: BACKEND_URL,
+  },
+  '/people': {
+    target: BACKEND_URL,
+  },
 }
 
 // The dev server must stay on port 3000 and fail loudly if it is taken.

@@ -4,6 +4,8 @@ import type { MediaType } from '../../types/media'
 /** Mirrors the backend defaults in config/settings.py. The server re-validates. */
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 export const MAX_PROMPT_LENGTH = 1000
+export const MAX_COLLECTION_NAME_LENGTH = 80
+export const MAX_COLLECTION_DESCRIPTION_LENGTH = 500
 export const ALLOWED_UPLOAD_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 const ALLOWED_UPLOAD_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp']
 
@@ -26,6 +28,12 @@ export const GENERATION_SIZES = [
   { value: '512x768', label: 'Portrait · 512 × 768', width: 512, height: 768 },
   { value: '768x512', label: 'Landscape · 768 × 512', width: 768, height: 512 },
 ] as const
+
+/** Mirrors config/settings.py; the server re-validates every value. */
+export const GENERATION_DEFAULT_STEPS = 20
+export const GENERATION_MIN_STEPS = 1
+export const GENERATION_MAX_STEPS = 30
+export const GENERATION_MAX_SEED = 2 ** 63 - 1
 
 export const EMPTY_ERRORS: NormalizedErrors = { fieldErrors: {}, formErrors: [] }
 

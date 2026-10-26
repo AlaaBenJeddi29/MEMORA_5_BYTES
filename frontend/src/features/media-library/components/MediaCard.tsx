@@ -3,16 +3,31 @@ import { Icon } from '../../../components/Icon'
 import type { MediaItem } from '../../../types/media'
 import { formatDateTime } from '../../../utils/format'
 import { MEDIA_TYPE_LABELS } from '../mediaHelpers'
+import { FavoriteButton } from './FavoriteButton'
 import { MediaImage } from './MediaImage'
 import { MediaTypeBadge } from './MediaTypeBadge'
 
 export interface MediaCardProps {
   media: MediaItem
+  favoriteBusy?: boolean
+  removeBusy?: boolean
+  activeCollectionName?: string
   onOpen: (media: MediaItem) => void
   onDelete: (media: MediaItem) => void
+  onToggleFavorite: (media: MediaItem) => void
+  onRemoveFromCollection?: (media: MediaItem) => void
 }
 
-export function MediaCard({ media, onOpen, onDelete }: MediaCardProps) {
+export function MediaCard({
+  media,
+  favoriteBusy = false,
+  removeBusy = false,
+  activeCollectionName,
+  onOpen,
+  onDelete,
+  onToggleFavorite,
+  onRemoveFromCollection,
+}: MediaCardProps) {
   const typeLabel = MEDIA_TYPE_LABELS[media.media_type]
   const imageAlt = media.prompt
     ? `${typeLabel}: ${media.prompt}`
@@ -23,6 +38,13 @@ export function MediaCard({ media, onOpen, onDelete }: MediaCardProps) {
 
   return (
     <li className="media-card">
+      <FavoriteButton
+        media={media}
+        busy={favoriteBusy}
+        className="media-card__favorite"
+        onToggle={onToggleFavorite}
+      />
+
       <button
         type="button"
         className="media-card__preview"
@@ -58,6 +80,20 @@ export function MediaCard({ media, onOpen, onDelete }: MediaCardProps) {
             <Icon name="eye" size={14} />
             View details
           </Button>
+          {onRemoveFromCollection && (
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={removeBusy}
+              onClick={() => onRemoveFromCollection(media)}
+              aria-label={`Remove ${typeLabel} ${media.id} from ${
+                activeCollectionName ?? 'this collection'
+              }`}
+            >
+              <Icon name="folder" size={14} />
+              {removeBusy ? 'Removing…' : 'Remove'}
+            </Button>
+          )}
           <Button
             size="sm"
             variant="ghost"

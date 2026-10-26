@@ -9,13 +9,14 @@ import { normalizeApiError, type NormalizedErrors } from '../../../services/erro
 import { journalApi } from '../../../services/journal'
 import { summariesApi } from '../../../services/summaries'
 import type { JournalEntry } from '../../../types/journal'
+import type { Summary } from '../../../types/summaries'
 import { formatDateTime } from '../../../utils/format'
 import { Dialog } from './Dialog'
 
 export interface GenerateSummaryDialogProps {
   onClose: () => void
-  /** Called after Django confirms generation. */
-  onGenerated: () => void
+  /** Called with the created summary once Django confirms generation. */
+  onGenerated: (summary: Summary) => void
 }
 
 type EntryLoadStatus = 'loading' | 'ready' | 'error'
@@ -76,8 +77,8 @@ export function GenerateSummaryDialog({ onClose, onGenerated }: GenerateSummaryD
     try {
       // Only the ID crosses the wire. Django resolves the entry and calls
       // Gemini server-side; the browser never sends or sees the key.
-      await summariesApi.generate({ journal_entry_id: parsedId })
-      onGenerated()
+      const created = await summariesApi.generate({ journal_entry_id: parsedId })
+      onGenerated(created)
     } catch (error) {
       setErrors(normalizeApiError(error))
     } finally {

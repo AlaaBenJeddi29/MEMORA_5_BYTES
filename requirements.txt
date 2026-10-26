@@ -9,9 +9,12 @@ djangorestframework==3.18.3    # REST API toolkit
 django-cors-headers==4.9.0     # allow the React frontend to call the API
 python-dotenv==1.2.4           # load settings from a .env file
 Pillow==12.3.0                 # image handling (needed for image fields later)
-requests==2.34.2               # HTTP client for future AI / external calls
+requests==2.34.2               # HTTP client for AI / external calls
 google-genai==2.33.0           # official Gemini SDK (server-side summaries)
-requests==2.34.2               # HTTP client for AI / external calls (Groq)
+groq==1.7.0                    # Groq SDK (journal search analysis and synonyms)
+
+# --- Development / test tooling ---
+coverage==7.17.0               # coverage report for `coverage run manage.py test`
 
 # --- Module 2: Audio & Transcription ---
 # mutagen is optional — used for reading audio duration metadata.

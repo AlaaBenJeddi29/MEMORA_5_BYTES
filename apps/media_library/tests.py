@@ -40,7 +40,7 @@ from .journal_context import (
     build_journal_prompt,
     get_journal_entry,
 )
-from .models import MediaFile
+from .models import MediaCollection, MediaFile
 
 User = get_user_model()
 
@@ -1012,8 +1012,8 @@ class GenerateImageApiTests(APITestCase):
         self._override = override_settings(MEDIA_ROOT=self._media_root.name)
         self._override.enable()
         self.addCleanup(self._override.disable)
-        self.owner = User.objects.create_user(username="owner", password="test-pass-123")
-        self.other = User.objects.create_user(username="other", password="test-pass-123")
+        self.owner = User.objects.create_user(username="owner", email="owner@example.com", password="test-pass-123")
+        self.other = User.objects.create_user(username="other", email="other@example.com", password="test-pass-123")
         self.entry = JournalEntry.objects.create(
             user=self.owner,
             title="Morning walk",
@@ -1491,7 +1491,7 @@ class MediaFileModelTests(TestCase):
         self._override = override_settings(MEDIA_ROOT=self._media_root.name)
         self._override.enable()
         self.addCleanup(self._override.disable)
-        self.user = User.objects.create_user(username="owner", password="test-pass-123")
+        self.user = User.objects.create_user(username="owner", email="owner@example.com", password="test-pass-123")
 
     def create_media(self, **overrides):
         fields = {"owner": self.user, "file": image_upload()}
@@ -1649,8 +1649,8 @@ class MediaFileModelTests(TestCase):
 
 class JournalContextTests(TestCase):
     def setUp(self):
-        self.owner = User.objects.create_user(username="owner", password="test-pass-123")
-        self.other = User.objects.create_user(username="other", password="test-pass-123")
+        self.owner = User.objects.create_user(username="owner", email="owner@example.com", password="test-pass-123")
+        self.other = User.objects.create_user(username="other", email="other@example.com", password="test-pass-123")
         self.entry = JournalEntry.objects.create(
             user=self.owner,
             title="Morning walk",
@@ -1735,8 +1735,8 @@ class MediaUploadApiTests(APITestCase):
         )
         self._override.enable()
         self.addCleanup(self._override.disable)
-        self.owner = User.objects.create_user(username="owner", password="test-pass-123")
-        self.other = User.objects.create_user(username="other", password="test-pass-123")
+        self.owner = User.objects.create_user(username="owner", email="owner@example.com", password="test-pass-123")
+        self.other = User.objects.create_user(username="other", email="other@example.com", password="test-pass-123")
         self.url = reverse("media-list")
 
     def authenticate(self, user=None):
@@ -1987,8 +1987,8 @@ class MediaFileDetailApiTests(APITestCase):
         self._override = override_settings(MEDIA_ROOT=self._media_root.name)
         self._override.enable()
         self.addCleanup(self._override.disable)
-        self.owner = User.objects.create_user(username="owner", password="test-pass-123")
-        self.other = User.objects.create_user(username="other", password="test-pass-123")
+        self.owner = User.objects.create_user(username="owner", email="owner@example.com", password="test-pass-123")
+        self.other = User.objects.create_user(username="other", email="other@example.com", password="test-pass-123")
 
     def authenticate(self, user=None):
         self.client.force_authenticate(user=user or self.owner)
@@ -2210,3 +2210,537 @@ class MediaRouteTests(SimpleTestCase):
         self.assertEqual(match.kwargs, {"pk": 7})
         with self.assertRaises(Resolver404):
             resolve("/api/media/not-an-id/")
+
+    def test_collection_and_favorite_routes_resolve(self):
+        self.assertEqual(
+            resolve("/api/media/collections/").url_name,
+            "media-collection-list",
+        )
+        self.assertEqual(
+            resolve("/api/media/collections/3/").url_name,
+            "media-collection-detail",
+        )
+        self.assertEqual(
+            resolve("/api/media/collections/3/items/").url_name,
+            "media-collection-items",
+        )
+        self.assertEqual(
+            resolve("/api/media/collections/3/items/8/").url_name,
+            "media-collection-item",
+        )
+        self.assertEqual(
+            resolve("/api/media/8/favorite/").url_name,
+            "media-favorite",
+        )
+
+
+class FavoriteApiTests(APITestCase):
+    def setUp(self):
+        self._media_root = tempfile.TemporaryDirectory()
+        self.addCleanup(self._media_root.cleanup)
+        self._override = override_settings(MEDIA_ROOT=self._media_root.name)
+        self._override.enable()
+        self.addCleanup(self._override.disable)
+        self.owner = User.objects.create_user(
+            username="owner",
+            email="owner@example.com",
+            password="test-pass-123",
+        )
+        self.other = User.objects.create_user(
+            username="other",
+            email="other@example.com",
+            password="test-pass-123",
+        )
+        self.media = MediaFile.objects.create(
+            owner=self.owner,
+            file=image_upload(),
+        )
+
+    def authenticate(self, user=None):
+        self.client.force_authenticate(user=user or self.owner)
+
+    def favorite_url(self, media=None):
+        return reverse("media-favorite", args=[(media or self.media).pk])
+
+    def test_favorite_and_unfavorite_persist_across_requests(self):
+        self.authenticate()
+
+        favorite = self.client.patch(
+            self.favorite_url(),
+            {"is_favorite": True},
+            format="json",
+        )
+
+        self.assertEqual(favorite.status_code, status.HTTP_200_OK)
+        self.assertTrue(favorite.data["is_favorite"])
+        self.media.refresh_from_db()
+        self.assertTrue(self.media.is_favorite)
+
+        listed = self.client.get(reverse("media-list"))
+        row = next(item for item in listed.data if item["id"] == self.media.pk)
+        self.assertTrue(row["is_favorite"])
+
+        unfavorite = self.client.patch(
+            self.favorite_url(),
+            {"is_favorite": False},
+            format="json",
+        )
+
+        self.assertEqual(unfavorite.status_code, status.HTTP_200_OK)
+        self.assertFalse(unfavorite.data["is_favorite"])
+        self.media.refresh_from_db()
+        self.assertFalse(self.media.is_favorite)
+
+    def test_favorite_requires_a_boolean_value(self):
+        self.authenticate()
+
+        missing = self.client.patch(
+            self.favorite_url(),
+            {},
+            format="json",
+        )
+        invalid = self.client.patch(
+            self.favorite_url(),
+            {"is_favorite": "not-a-boolean"},
+            format="json",
+        )
+
+        self.assertEqual(missing.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("is_favorite", missing.data)
+        self.assertEqual(invalid.status_code, status.HTTP_400_BAD_REQUEST)
+        self.media.refresh_from_db()
+        self.assertFalse(self.media.is_favorite)
+
+    def test_another_owner_cannot_favorite_the_media(self):
+        self.authenticate(self.other)
+
+        response = self.client.patch(
+            self.favorite_url(),
+            {"is_favorite": True},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.media.refresh_from_db()
+        self.assertFalse(self.media.is_favorite)
+
+    def test_anonymous_favorite_is_forbidden(self):
+        response = self.client.patch(
+            self.favorite_url(),
+            {"is_favorite": True},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.media.refresh_from_db()
+        self.assertFalse(self.media.is_favorite)
+
+
+class MediaCollectionApiTests(APITestCase):
+    def setUp(self):
+        self._media_root = tempfile.TemporaryDirectory()
+        self.addCleanup(self._media_root.cleanup)
+        self._override = override_settings(MEDIA_ROOT=self._media_root.name)
+        self._override.enable()
+        self.addCleanup(self._override.disable)
+        self.owner = User.objects.create_user(
+            username="owner",
+            email="owner@example.com",
+            password="test-pass-123",
+        )
+        self.other = User.objects.create_user(
+            username="other",
+            email="other@example.com",
+            password="test-pass-123",
+        )
+        self.media = MediaFile.objects.create(
+            owner=self.owner,
+            file=image_upload(),
+        )
+
+    def authenticate(self, user=None):
+        self.client.force_authenticate(user=user or self.owner)
+
+    def create_collection(self, owner=None, name="Travel", **overrides):
+        values = {
+            "owner": owner or self.owner,
+            "name": name,
+        }
+        values.update(overrides)
+        return MediaCollection.objects.create(**values)
+
+    def collection_url(self, collection):
+        return reverse("media-collection-detail", args=[collection.pk])
+
+    def test_create_collection_trims_fields_and_assigns_owner(self):
+        self.authenticate()
+
+        response = self.client.post(
+            reverse("media-collection-list"),
+            {"name": "  Travel  ", "description": "  Places I have been  "},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        collection = MediaCollection.objects.get(pk=response.data["id"])
+        self.assertEqual(collection.owner, self.owner)
+        self.assertEqual(collection.name, "Travel")
+        self.assertEqual(collection.description, "Places I have been")
+        self.assertEqual(response.data["item_count"], 0)
+
+    def test_create_rejects_blank_or_oversized_fields(self):
+        self.authenticate()
+        url = reverse("media-collection-list")
+
+        blank = self.client.post(url, {"name": "   "}, format="json")
+        long_name = self.client.post(url, {"name": "x" * 81}, format="json")
+        long_description = self.client.post(
+            url,
+            {"name": "Travel", "description": "x" * 501},
+            format="json",
+        )
+
+        self.assertEqual(blank.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("name", blank.data)
+        self.assertEqual(long_name.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("name", long_name.data)
+        self.assertEqual(
+            long_description.status_code,
+            status.HTTP_400_BAD_REQUEST,
+        )
+        self.assertIn("description", long_description.data)
+        self.assertEqual(MediaCollection.objects.count(), 0)
+
+    def test_duplicate_names_are_rejected_case_insensitively(self):
+        self.create_collection(name="Travel")
+        self.authenticate()
+
+        response = self.client.post(
+            reverse("media-collection-list"),
+            {"name": "travel"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("name", response.data)
+        self.assertEqual(MediaCollection.objects.count(), 1)
+
+    def test_list_is_owner_scoped_and_reports_item_count(self):
+        own_collection = self.create_collection(name="Travel")
+        own_collection.items.add(self.media)
+        self.create_collection(owner=self.other, name="Private")
+        self.authenticate()
+
+        response = self.client.get(reverse("media-collection-list"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["id"], own_collection.pk)
+        self.assertEqual(response.data[0]["item_count"], 1)
+
+    def test_rename_and_description_updates_are_persisted(self):
+        collection = self.create_collection(name="Travel")
+        self.authenticate()
+
+        response = self.client.patch(
+            self.collection_url(collection),
+            {"name": "Journeys", "description": "Long trips"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        collection.refresh_from_db()
+        self.assertEqual(collection.name, "Journeys")
+        self.assertEqual(collection.description, "Long trips")
+
+        same_name = self.client.patch(
+            self.collection_url(collection),
+            {"name": "journeys"},
+            format="json",
+        )
+        self.assertEqual(same_name.status_code, status.HTTP_200_OK)
+
+    def test_rename_rejects_another_collections_name(self):
+        self.create_collection(name="Travel")
+        collection = self.create_collection(name="Ideas")
+        self.authenticate()
+
+        response = self.client.patch(
+            self.collection_url(collection),
+            {"name": "travel"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("name", response.data)
+        collection.refresh_from_db()
+        self.assertEqual(collection.name, "Ideas")
+
+    def test_delete_collection_keeps_media_and_stored_file(self):
+        collection = self.create_collection()
+        collection.items.add(self.media)
+        stored_path = self.media.file.path
+        self.authenticate()
+
+        response = self.client.delete(self.collection_url(collection))
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(
+            MediaCollection.objects.filter(pk=collection.pk).exists()
+        )
+        self.media.refresh_from_db()
+        self.assertTrue(MediaFile.objects.filter(pk=self.media.pk).exists())
+        self.assertTrue(Path(stored_path).exists())
+
+    def test_another_owner_cannot_access_or_change_a_collection(self):
+        collection = self.create_collection(name="Private")
+        self.authenticate(self.other)
+
+        retrieve = self.client.get(self.collection_url(collection))
+        update = self.client.patch(
+            self.collection_url(collection),
+            {"name": "Hijacked"},
+            format="json",
+        )
+        delete = self.client.delete(self.collection_url(collection))
+
+        self.assertEqual(retrieve.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(update.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(delete.status_code, status.HTTP_404_NOT_FOUND)
+        collection.refresh_from_db()
+        self.assertEqual(collection.name, "Private")
+
+    def test_anonymous_collection_requests_are_forbidden(self):
+        list_response = self.client.get(reverse("media-collection-list"))
+        create_response = self.client.post(
+            reverse("media-collection-list"),
+            {"name": "Anonymous"},
+            format="json",
+        )
+
+        self.assertEqual(
+            list_response.status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+        self.assertEqual(
+            create_response.status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+        self.assertEqual(MediaCollection.objects.count(), 0)
+
+    def test_detail_returns_items_and_media_membership_ids(self):
+        collection = self.create_collection()
+        collection.items.add(self.media)
+        self.authenticate()
+
+        response = self.client.get(self.collection_url(collection))
+        listed = self.client.get(reverse("media-list"))
+        row = next(
+            item for item in listed.data if item["id"] == self.media.pk
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["item_count"], 1)
+        self.assertEqual(
+            [item["id"] for item in response.data["items"]],
+            [self.media.pk],
+        )
+        self.assertEqual(row["collection_ids"], [collection.pk])
+        self.assertFalse(row["is_favorite"])
+
+
+class MediaCollectionItemApiTests(APITestCase):
+    def setUp(self):
+        self._media_root = tempfile.TemporaryDirectory()
+        self.addCleanup(self._media_root.cleanup)
+        self._override = override_settings(MEDIA_ROOT=self._media_root.name)
+        self._override.enable()
+        self.addCleanup(self._override.disable)
+        self.owner = User.objects.create_user(
+            username="owner",
+            email="owner@example.com",
+            password="test-pass-123",
+        )
+        self.other = User.objects.create_user(
+            username="other",
+            email="other@example.com",
+            password="test-pass-123",
+        )
+        self.first_media = MediaFile.objects.create(
+            owner=self.owner,
+            file=image_upload("first.png"),
+        )
+        self.second_media = MediaFile.objects.create(
+            owner=self.owner,
+            file=image_upload("second.png"),
+        )
+        self.other_media = MediaFile.objects.create(
+            owner=self.other,
+            file=image_upload("other.png"),
+        )
+        self.first_collection = MediaCollection.objects.create(
+            owner=self.owner,
+            name="Travel",
+        )
+        self.second_collection = MediaCollection.objects.create(
+            owner=self.owner,
+            name="Ideas",
+        )
+        self.other_collection = MediaCollection.objects.create(
+            owner=self.other,
+            name="Private",
+        )
+
+    def authenticate(self, user=None):
+        self.client.force_authenticate(user=user or self.owner)
+
+    def items_url(self, collection):
+        return reverse("media-collection-items", args=[collection.pk])
+
+    def item_url(self, collection, media):
+        return reverse(
+            "media-collection-item",
+            args=[collection.pk, media.pk],
+        )
+
+    def test_media_can_belong_to_multiple_collections(self):
+        self.authenticate()
+
+        first = self.client.post(
+            self.items_url(self.first_collection),
+            {"media_id": self.first_media.pk},
+            format="json",
+        )
+        second = self.client.post(
+            self.items_url(self.second_collection),
+            {"media_id": self.first_media.pk},
+            format="json",
+        )
+
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(second.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(
+            set(self.first_media.collections.values_list("pk", flat=True)),
+            {self.first_collection.pk, self.second_collection.pk},
+        )
+        self.assertCountEqual(
+            second.data["collection_ids"],
+            [self.first_collection.pk, self.second_collection.pk],
+        )
+
+    def test_adding_the_same_media_twice_is_idempotent(self):
+        self.authenticate()
+        url = self.items_url(self.first_collection)
+
+        first = self.client.post(
+            url,
+            {"media_id": self.first_media.pk},
+            format="json",
+        )
+        second = self.client.post(
+            url,
+            {"media_id": self.first_media.pk},
+            format="json",
+        )
+
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(second.status_code, status.HTTP_200_OK)
+        self.assertEqual(self.first_collection.items.count(), 1)
+
+    def test_cannot_add_another_owners_media_by_id(self):
+        self.authenticate()
+
+        response = self.client.post(
+            self.items_url(self.first_collection),
+            {"media_id": self.other_media.pk},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("media_id", response.data)
+        self.assertEqual(self.first_collection.items.count(), 0)
+
+    def test_cannot_add_to_another_owners_collection(self):
+        self.authenticate()
+
+        response = self.client.post(
+            self.items_url(self.other_collection),
+            {"media_id": self.first_media.pk},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(self.other_collection.items.count(), 0)
+
+    def test_remove_media_from_collection_keeps_media_and_file(self):
+        self.first_collection.items.add(self.first_media)
+        stored_path = self.first_media.file.path
+        self.authenticate()
+
+        response = self.client.delete(
+            self.item_url(self.first_collection, self.first_media)
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(self.first_collection.items.count(), 0)
+        self.assertTrue(
+            MediaFile.objects.filter(pk=self.first_media.pk).exists()
+        )
+        self.assertTrue(Path(stored_path).exists())
+
+    def test_removing_a_non_member_is_idempotent(self):
+        self.authenticate()
+
+        response = self.client.delete(
+            self.item_url(self.first_collection, self.first_media)
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertTrue(
+            MediaFile.objects.filter(pk=self.first_media.pk).exists()
+        )
+
+    def test_cannot_remove_through_another_owners_collection(self):
+        self.first_collection.items.add(self.first_media)
+        self.authenticate(self.other)
+
+        response = self.client.delete(
+            self.item_url(self.first_collection, self.first_media)
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(self.first_collection.items.count(), 1)
+
+    def test_deleting_media_removes_membership_but_keeps_collection(self):
+        self.first_collection.items.add(self.first_media)
+        self.second_collection.items.add(self.first_media)
+
+        self.first_media.delete()
+
+        self.assertTrue(
+            MediaCollection.objects.filter(
+                pk=self.first_collection.pk
+            ).exists()
+        )
+        self.assertEqual(self.first_collection.items.count(), 0)
+        self.assertEqual(self.second_collection.items.count(), 0)
+
+    def test_anonymous_item_mutations_are_forbidden(self):
+        add_response = self.client.post(
+            self.items_url(self.first_collection),
+            {"media_id": self.first_media.pk},
+            format="json",
+        )
+        remove_response = self.client.delete(
+            self.item_url(self.first_collection, self.first_media)
+        )
+
+        self.assertEqual(
+            add_response.status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+        self.assertEqual(
+            remove_response.status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+        self.assertEqual(self.first_collection.items.count(), 0)

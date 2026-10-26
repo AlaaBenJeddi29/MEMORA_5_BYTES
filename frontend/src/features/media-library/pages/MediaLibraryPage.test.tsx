@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { fakeResponse, jsonResponse } from '../../../test/fakeResponse'
 import type { JournalEntry, JournalPage } from '../../../types/journal'
-import type { MediaItem } from '../../../types/media'
+import type { MediaCollection, MediaItem } from '../../../types/media'
 import type { Summary } from '../../../types/summaries'
 import { MAX_PROMPT_LENGTH } from '../mediaHelpers'
 import { MediaLibraryPage } from './MediaLibraryPage'
@@ -15,9 +15,11 @@ const ORIGINAL: MediaItem = {
   media_type: 'original',
   prompt: '',
   status: 'succeeded',
+  is_favorite: false,
   journal_entry_id: null,
   journal_entries: [],
   summary_id: null,
+  collection_ids: [],
   provider: '',
   model: '',
   created_at: '2026-10-20T10:00:00Z',
@@ -30,9 +32,11 @@ const GENERATED: MediaItem = {
   media_type: 'ai_generated',
   prompt: 'A quiet lake at dawn, watercolor.',
   status: 'succeeded',
+  is_favorite: false,
   journal_entry_id: 2,
   journal_entries: [{ id: 2, title: 'Rainy afternoon' }],
   summary_id: 3,
+  collection_ids: [],
   provider: 'comfyui',
   model: 'sd15.safetensors',
   created_at: '2026-10-21T11:30:00Z',
@@ -87,6 +91,24 @@ const SUMMARIES: Summary[] = [
   },
 ]
 
+const TRIPS: MediaCollection = {
+  id: 7,
+  name: 'Weekend trips',
+  description: 'Two days by the lake.',
+  item_count: 1,
+  created_at: '2026-10-22T09:00:00Z',
+  updated_at: '2026-10-22T09:00:00Z',
+}
+
+const EMPTY_COLLECTION: MediaCollection = {
+  id: 8,
+  name: 'Empty set',
+  description: '',
+  item_count: 0,
+  created_at: '2026-10-23T09:00:00Z',
+  updated_at: '2026-10-23T09:00:00Z',
+}
+
 type FetchHandler = (url: string, init?: RequestInit) => Response | Promise<Response>
 
 function installFetch(handler: FetchHandler) {
@@ -99,17 +121,22 @@ interface SourceFixtures {
   media?: MediaItem[]
   journalPage?: JournalPage
   summaries?: Summary[]
+  collections?: MediaCollection[]
 }
 
 function baseHandler({
   media = [ORIGINAL, GENERATED],
   journalPage = JOURNAL_PAGE,
   summaries = SUMMARIES,
+  collections = [],
 }: SourceFixtures = {}): FetchHandler {
   return (url, init) => {
     const method = init?.method ?? 'GET'
     if (url.endsWith('/api/media/') && method === 'GET') {
       return jsonResponse(media)
+    }
+    if (url.endsWith('/api/media/collections/') && method === 'GET') {
+      return jsonResponse(collections)
     }
     if (url.endsWith(JOURNAL_PICKER_URL)) {
       return jsonResponse(journalPage)
@@ -452,6 +479,9 @@ describe('MediaLibraryPage', () => {
         }
         return jsonResponse(SUMMARIES)
       }
+      if (url.endsWith('/api/media/collections/') && method === 'GET') {
+        return jsonResponse([])
+      }
       return jsonResponse({ detail: 'Not found' }, 404)
     })
     renderPage()
@@ -646,6 +676,258 @@ describe('MediaLibraryPage', () => {
     expect(attempts).toBe(0)
   })
 
+  it('previews the selected journal memory and the prompt built from its recap', async () => {
+    installFetch(baseHandler())
+    const { container } = renderPage()
+
+    await screen.findByText('Original photo')
+
+    const journalSelect = (await screen.findByLabelText(
+      'Journal entry',
+    )) as HTMLSelectElement
+    await waitFor(() => expect(journalSelect.disabled).toBe(false))
+    fireEvent.change(journalSelect, { target: { value: '2' } })
+
+    expect(await screen.findByText('Journal memory')).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Rainy afternoon' })).toBeTruthy()
+    expect(
+      container
+        .querySelector('.media-source-preview time')
+        ?.getAttribute('datetime'),
+    ).toBe('2026-09-15T15:40:00Z')
+    expect(
+      screen.getByText('A quiet afternoon reading by the window.'),
+    ).toBeTruthy()
+    expect(screen.getByText('Built from the journal title and recap')).toBeTruthy()
+
+    const expectedPrompt =
+      'Illustrate this journal memory titled "Rainy afternoon". A quiet afternoon reading by the window.'
+    expect(screen.getByText(expectedPrompt)).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Use this prompt' }))
+    expect((screen.getByLabelText('Prompt') as HTMLTextAreaElement).value).toBe(
+      expectedPrompt,
+    )
+  })
+
+  it('shows a selected summary with its saved illustration prompt', async () => {
+    installFetch(baseHandler())
+    renderPage()
+
+    await screen.findByText('Original photo')
+
+    const summarySelect = (await screen.findByLabelText('Summary')) as HTMLSelectElement
+    await waitFor(() => expect(summarySelect.disabled).toBe(false))
+    fireEvent.change(summarySelect, { target: { value: '3' } })
+
+    expect(await screen.findByText('Summary memory')).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Summary #3' })).toBeTruthy()
+    expect(
+      screen.getByText(/From journal memory “Rainy afternoon”/),
+    ).toBeTruthy()
+    expect(
+      screen.getByText('Saved illustration prompt from Summary #3'),
+    ).toBeTruthy()
+    expect(screen.getByText('A rain-soaked window at dusk.')).toBeTruthy()
+    expect((screen.getByLabelText('Journal entry') as HTMLSelectElement).value).toBe(
+      '2',
+    )
+  })
+
+  it('sends a reviewed prompt with advanced steps and seed', async () => {
+    let body: Record<string, unknown> | null = null
+    installFetch((url, init) => {
+      if (url.endsWith('/api/media/generate/') && init?.method === 'POST') {
+        body = JSON.parse(String(init.body))
+        return jsonResponse(
+          { ...GENERATED, id: 61, prompt: 'A custom reviewed prompt' },
+          201,
+        )
+      }
+      return baseHandler()(url, init)
+    })
+    renderPage()
+
+    await screen.findByText('Original photo')
+
+    const summarySelect = (await screen.findByLabelText('Summary')) as HTMLSelectElement
+    await waitFor(() => expect(summarySelect.disabled).toBe(false))
+    fireEvent.change(summarySelect, { target: { value: '3' } })
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Use this prompt' }))
+    fireEvent.change(screen.getByLabelText('Prompt'), {
+      target: { value: 'A custom reviewed prompt' },
+    })
+    expect(
+      screen.getByText(/replaces the prompt saved with Summary #3/),
+    ).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('Steps'), { target: { value: '12' } })
+    fireEvent.change(screen.getByLabelText('Seed (optional)'), {
+      target: { value: '42' },
+    })
+    giveGenerationConsent()
+    fireEvent.click(screen.getByRole('button', { name: 'Generate illustration' }))
+
+    expect(await screen.findByText('AI-generated illustration')).toBeTruthy()
+    expect(body).toEqual({
+      summary_id: 3,
+      journal_entry_id: 2,
+      prompt: 'A custom reviewed prompt',
+      width: 512,
+      height: 512,
+      steps: 12,
+      seed: 42,
+    })
+  })
+
+  it('blocks invalid advanced options before calling the API', async () => {
+    let attempts = 0
+    installFetch((url, init) => {
+      if (url.endsWith('/api/media/generate/') && init?.method === 'POST') {
+        attempts += 1
+      }
+      return baseHandler()(url, init)
+    })
+    renderPage()
+
+    await screen.findByText('Original photo')
+
+    fireEvent.change(screen.getByLabelText('Steps'), { target: { value: '0' } })
+    fireEvent.change(screen.getByLabelText('Seed (optional)'), {
+      target: { value: '-4' },
+    })
+    giveGenerationConsent()
+    fireEvent.click(screen.getByRole('button', { name: 'Generate illustration' }))
+
+    expect(
+      await screen.findByText('Steps must be between 1 and 30.'),
+    ).toBeTruthy()
+    expect(
+      screen.getByText('Seed must be a whole number of 0 or more.'),
+    ).toBeTruthy()
+    expect(attempts).toBe(0)
+  })
+
+  it('explains a missing ComfyUI configuration and offers a retry', async () => {
+    installFetch((url, init) => {
+      if (url.endsWith('/api/media/generate/') && init?.method === 'POST') {
+        return jsonResponse(
+          { detail: 'Image generation is not configured.' },
+          503,
+        )
+      }
+      return baseHandler()(url, init)
+    })
+    renderPage()
+
+    await screen.findByText('Original photo')
+
+    fireEvent.change(screen.getByLabelText(/Prompt/), {
+      target: { value: 'A quiet lake at dawn' },
+    })
+    giveGenerationConsent()
+    fireEvent.click(screen.getByRole('button', { name: 'Generate illustration' }))
+
+    expect(await screen.findByText('ComfyUI isn’t configured')).toBeTruthy()
+    expect(screen.getByText(/COMFYUI_CHECKPOINT/)).toBeTruthy()
+    expect(
+      screen.getByText('Image generation is not configured.'),
+    ).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy()
+  })
+
+  it('favorites the new illustration from its result card', async () => {
+    const generated: MediaItem = {
+      ...GENERATED,
+      id: 62,
+      created_at: '2026-10-25T12:00:00Z',
+      updated_at: '2026-10-25T12:00:00Z',
+    }
+    const favorited: MediaItem = { ...generated, is_favorite: true }
+    installFetch((url, init) => {
+      if (url.endsWith('/api/media/generate/') && init?.method === 'POST') {
+        return jsonResponse(generated, 201)
+      }
+      if (url.endsWith('/api/media/62/favorite/') && init?.method === 'PATCH') {
+        return jsonResponse(favorited)
+      }
+      return baseHandler()(url, init)
+    })
+    renderPage()
+
+    await screen.findByText('Original photo')
+
+    const journalSelect = (await screen.findByLabelText(
+      'Journal entry',
+    )) as HTMLSelectElement
+    await waitFor(() => expect(journalSelect.disabled).toBe(false))
+    fireEvent.change(journalSelect, { target: { value: '2' } })
+    giveGenerationConsent()
+    fireEvent.click(screen.getByRole('button', { name: 'Generate illustration' }))
+
+    await screen.findByText('AI-generated illustration')
+    const resultSection = screen
+      .getByRole('heading', { name: 'AI-generated illustration' })
+      .closest('section') as HTMLElement
+
+    fireEvent.click(
+      within(resultSection).getByRole('button', {
+        name: 'Add AI illustration 62 to favorites',
+      }),
+    )
+
+    await waitFor(() =>
+      expect(
+        within(resultSection).getByRole('button', {
+          name: 'Remove AI illustration 62 from favorites',
+        }),
+      ).toBeTruthy(),
+    )
+  })
+
+  it('opens the source memory in the timeline with the new artwork linked', async () => {
+    const generated: MediaItem = {
+      ...GENERATED,
+      id: 63,
+      created_at: '2026-10-25T13:00:00Z',
+      updated_at: '2026-10-25T13:00:00Z',
+    }
+    installFetch((url, init) => {
+      if (url.endsWith('/api/media/generate/') && init?.method === 'POST') {
+        return jsonResponse(generated, 201)
+      }
+      return baseHandler()(url, init)
+    })
+    renderPage()
+
+    await screen.findByText('Original photo')
+
+    const journalSelect = (await screen.findByLabelText(
+      'Journal entry',
+    )) as HTMLSelectElement
+    await waitFor(() => expect(journalSelect.disabled).toBe(false))
+    fireEvent.change(journalSelect, { target: { value: '2' } })
+    giveGenerationConsent()
+    fireEvent.click(screen.getByRole('button', { name: 'Generate illustration' }))
+
+    await screen.findByText('AI-generated illustration')
+    fireEvent.click(screen.getByRole('button', { name: 'Open source memory' }))
+
+    expect(
+      await screen.findByRole('heading', { name: 'Memory timeline' }),
+    ).toBeTruthy()
+    const dialog = await screen.findByRole('dialog')
+    expect(
+      within(dialog).getByRole('heading', { name: 'Rainy afternoon' }),
+    ).toBeTruthy()
+    expect(
+      within(dialog).getByRole('button', {
+        name: 'Open AI illustration 63 from this memory',
+      }),
+    ).toBeTruthy()
+  })
+
   it('confirms before deleting and removes the card after 204', async () => {
     const fetchMock = installFetch((url, init) => {
       if (url.endsWith('/api/media/11/') && init?.method === 'DELETE') {
@@ -719,5 +1001,623 @@ describe('MediaLibraryPage', () => {
     fireEvent.error(image)
 
     expect(screen.getByText('Image unavailable')).toBeTruthy()
+  })
+
+  it('favorites a card, filters favorites, and persists after a reload', async () => {
+    let serverMedia: MediaItem[] = [ORIGINAL, GENERATED]
+    const fetchMock = installFetch((url, init) => {
+      const method = init?.method ?? 'GET'
+      if (url.endsWith('/api/media/11/favorite/') && method === 'PATCH') {
+        const body = JSON.parse(String(init?.body)) as { is_favorite: boolean }
+        serverMedia = serverMedia.map((item) =>
+          item.id === 11 ? { ...item, is_favorite: body.is_favorite } : item,
+        )
+        return jsonResponse(serverMedia.find((item) => item.id === 11)!)
+      }
+      if (url.endsWith('/api/media/') && method === 'GET') {
+        return jsonResponse(serverMedia)
+      }
+      return baseHandler()(url, init)
+    })
+
+    const first = renderPage()
+    await screen.findByText('Original photo')
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Add Original photo 11 to favorites' }),
+    )
+
+    expect(await screen.findByText('Image #11 added to favorites.')).toBeTruthy()
+    expect(
+      screen
+        .getByRole('button', { name: 'Remove Original photo 11 from favorites' })
+        .getAttribute('aria-pressed'),
+    ).toBe('true')
+
+    const favoritesStat = screen
+      .getByText('Favorites')
+      .closest('.media-overview__item') as HTMLElement
+    expect(within(favoritesStat).getByText('1')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: /Favorites only/ }))
+    expect(await screen.findByText('1 of 2 shown')).toBeTruthy()
+    expect(screen.queryByText('AI illustration')).toBeNull()
+
+    const patchCall = fetchMock.mock.calls.find(
+      ([url, init]) =>
+        String(url).endsWith('/api/media/11/favorite/') &&
+        init?.method === 'PATCH',
+    )
+    expect(JSON.parse(String(patchCall?.[1]?.body))).toEqual({ is_favorite: true })
+
+    first.unmount()
+    renderPage()
+
+    await screen.findByText('Original photo')
+    expect(
+      screen.getByRole('button', { name: 'Remove Original photo 11 from favorites' }),
+    ).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: /Favorites only/ }))
+    expect(await screen.findByText('1 of 2 shown')).toBeTruthy()
+  })
+
+  it('rolls back an optimistic favorite when the API rejects it', async () => {
+    installFetch((url, init) => {
+      if (url.endsWith('/api/media/11/favorite/') && init?.method === 'PATCH') {
+        return jsonResponse({ detail: 'The favorite could not be saved.' }, 500)
+      }
+      return baseHandler()(url, init)
+    })
+    renderPage()
+    await screen.findByText('Original photo')
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Add Original photo 11 to favorites' }),
+    )
+
+    expect(await screen.findByText('The favorite could not be saved.')).toBeTruthy()
+    expect(
+      screen
+        .getByRole('button', { name: 'Add Original photo 11 to favorites' })
+        .getAttribute('aria-pressed'),
+    ).toBe('false')
+
+    fireEvent.click(screen.getByRole('button', { name: /Favorites only/ }))
+    expect(await screen.findByText('No favorites yet')).toBeTruthy()
+  })
+
+  it('creates a collection with a name and description', async () => {
+    const created: MediaCollection = { ...TRIPS, id: 9, item_count: 0 }
+    const fetchMock = installFetch((url, init) => {
+      if (url.endsWith('/api/media/collections/') && init?.method === 'POST') {
+        return jsonResponse(created, 201)
+      }
+      return baseHandler()(url, init)
+    })
+    renderPage()
+
+    expect(await screen.findByText('No collections yet')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'New collection' }))
+
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.change(within(dialog).getByLabelText(/^Name/), {
+      target: { value: 'Weekend trips' },
+    })
+    fireEvent.change(within(dialog).getByLabelText('Description'), {
+      target: { value: 'Two days by the lake.' },
+    })
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Create collection' }),
+    )
+
+    expect(
+      await screen.findByText('Collection “Weekend trips” created.'),
+    ).toBeTruthy()
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(screen.getByRole('heading', { name: 'Weekend trips' })).toBeTruthy()
+    expect(screen.getByText(/0 items/)).toBeTruthy()
+    expect(screen.getByText('Two days by the lake.')).toBeTruthy()
+
+    const postCall = fetchMock.mock.calls.find(
+      ([url, init]) =>
+        String(url).endsWith('/api/media/collections/') &&
+        init?.method === 'POST',
+    )
+    expect(JSON.parse(String(postCall?.[1]?.body))).toEqual({
+      name: 'Weekend trips',
+      description: 'Two days by the lake.',
+    })
+  })
+
+  it('keeps the collection dialog open and shows server validation errors', async () => {
+    installFetch((url, init) => {
+      if (url.endsWith('/api/media/collections/') && init?.method === 'POST') {
+        return jsonResponse(
+          { name: ['You already have a collection with this name.'] },
+          400,
+        )
+      }
+      return baseHandler({ collections: [TRIPS] })(url, init)
+    })
+    renderPage()
+    await screen.findByText('Weekend trips')
+
+    fireEvent.click(screen.getByRole('button', { name: 'New collection' }))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.change(within(dialog).getByLabelText(/^Name/), {
+      target: { value: 'Weekend trips' },
+    })
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Create collection' }),
+    )
+
+    expect(
+      await within(dialog).findByText(
+        'You already have a collection with this name.',
+      ),
+    ).toBeTruthy()
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    expect((within(dialog).getByLabelText(/^Name/) as HTMLInputElement).value).toBe(
+      'Weekend trips',
+    )
+  })
+
+  it('renames a collection and keeps its images', async () => {
+    const updated: MediaCollection = {
+      ...TRIPS,
+      name: 'Lake weekends',
+      updated_at: '2026-10-25T08:00:00Z',
+    }
+    const fetchMock = installFetch((url, init) => {
+      if (
+        url.endsWith('/api/media/collections/7/') &&
+        init?.method === 'PATCH'
+      ) {
+        return jsonResponse(updated)
+      }
+      return baseHandler({
+        media: [{ ...ORIGINAL, collection_ids: [7] }, GENERATED],
+        collections: [TRIPS],
+      })(url, init)
+    })
+    renderPage()
+    await screen.findByText('Weekend trips')
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Rename collection Weekend trips' }),
+    )
+    const dialog = await screen.findByRole('dialog')
+    expect((within(dialog).getByLabelText(/^Name/) as HTMLInputElement).value).toBe(
+      'Weekend trips',
+    )
+
+    fireEvent.change(within(dialog).getByLabelText(/^Name/), {
+      target: { value: 'Lake weekends' },
+    })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+    expect(
+      await screen.findByText('Collection “Lake weekends” updated.'),
+    ).toBeTruthy()
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(screen.getByRole('heading', { name: 'Lake weekends' })).toBeTruthy()
+
+    const patchCall = fetchMock.mock.calls.find(
+      ([url, init]) =>
+        String(url).endsWith('/api/media/collections/7/') &&
+        init?.method === 'PATCH',
+    )
+    expect(JSON.parse(String(patchCall?.[1]?.body))).toEqual({
+      name: 'Lake weekends',
+      description: 'Two days by the lake.',
+    })
+  })
+
+  it('deletes a collection without deleting its images', async () => {
+    const fetchMock = installFetch((url, init) => {
+      if (
+        url.endsWith('/api/media/collections/7/') &&
+        init?.method === 'DELETE'
+      ) {
+        return fakeResponse(204)
+      }
+      return baseHandler({
+        media: [{ ...ORIGINAL, collection_ids: [7] }, GENERATED],
+        collections: [TRIPS],
+      })(url, init)
+    })
+    renderPage()
+    await screen.findByText('Weekend trips')
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Delete collection Weekend trips' }),
+    )
+    const dialog = await screen.findByRole('alertdialog')
+    expect(
+      within(dialog).getByText(
+        '“Weekend trips” will be removed from your collections. Its image stays in your library and will not be deleted.',
+      ),
+    ).toBeTruthy()
+
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Delete collection' }),
+    )
+
+    expect(
+      await screen.findByText(
+        'Collection “Weekend trips” deleted. Its images are still in your library.',
+      ),
+    ).toBeTruthy()
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(screen.queryByText('Weekend trips')).toBeNull()
+    expect(screen.getByText('Original photo')).toBeTruthy()
+
+    const mediaDeletes = fetchMock.mock.calls.filter(
+      ([url, init]) =>
+        init?.method === 'DELETE' && String(url).endsWith('/api/media/11/'),
+    )
+    expect(mediaDeletes).toHaveLength(0)
+  })
+
+  it('opens a collection to filter the gallery and shows an empty collection', async () => {
+    installFetch(
+      baseHandler({
+        media: [{ ...ORIGINAL, collection_ids: [7] }, GENERATED],
+        collections: [TRIPS, EMPTY_COLLECTION],
+      }),
+    )
+    renderPage()
+    await screen.findByText('Weekend trips')
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Open collection Weekend trips' }),
+    )
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Weekend trips' }),
+    ).toBeTruthy()
+    expect(await screen.findByText('1 of 1 shown')).toBeTruthy()
+    expect(screen.queryByText('AI illustration')).toBeNull()
+    expect(screen.getByText('Viewing')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open collection Empty set' }))
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Empty set' }),
+    ).toBeTruthy()
+    expect(await screen.findByText('This collection is empty')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back to all media' }))
+    expect(await screen.findByText('2 of 2 shown')).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 2, name: 'Your gallery' })).toBeTruthy()
+  })
+
+  it('adds and removes an image from a collection in the detail dialog', async () => {
+    const emptyTrips: MediaCollection = { ...TRIPS, item_count: 0 }
+    const fetchMock = installFetch((url, init) => {
+      if (
+        url.endsWith('/api/media/collections/7/items/') &&
+        init?.method === 'POST'
+      ) {
+        return jsonResponse({ ...ORIGINAL, collection_ids: [7] }, 201)
+      }
+      if (
+        url.endsWith('/api/media/collections/7/items/11/') &&
+        init?.method === 'DELETE'
+      ) {
+        return fakeResponse(204)
+      }
+      return baseHandler({ collections: [emptyTrips] })(url, init)
+    })
+    renderPage()
+    await screen.findByText('Weekend trips')
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'View Original photo 11 details' }),
+    )
+    const dialog = await screen.findByRole('dialog')
+    expect(
+      within(dialog).getByRole('button', {
+        name: 'Add Original photo 11 to favorites',
+      }),
+    ).toBeTruthy()
+
+    const checkbox = within(dialog).getByRole('checkbox', {
+      name: /Weekend trips/,
+    }) as HTMLInputElement
+    expect(checkbox.checked).toBe(false)
+
+    fireEvent.click(checkbox)
+    await waitFor(() => expect(checkbox.checked).toBe(true))
+    expect(within(dialog).getByText('1 of 1')).toBeTruthy()
+
+    const card = screen
+      .getByRole('heading', { name: 'Weekend trips' })
+      .closest('li') as HTMLElement
+    expect(within(card).getByText(/1 item/)).toBeTruthy()
+
+    const postCall = fetchMock.mock.calls.find(
+      ([url, init]) =>
+        String(url).endsWith('/api/media/collections/7/items/') &&
+        init?.method === 'POST',
+    )
+    expect(JSON.parse(String(postCall?.[1]?.body))).toEqual({ media_id: 11 })
+
+    fireEvent.click(checkbox)
+    await waitFor(() => expect(checkbox.checked).toBe(false))
+    expect(within(card).getByText(/0 items/)).toBeTruthy()
+
+    const deleteCall = fetchMock.mock.calls.find(
+      ([url, init]) =>
+        String(url).endsWith('/api/media/collections/7/items/11/') &&
+        init?.method === 'DELETE',
+    )
+    expect(deleteCall).toBeTruthy()
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Done' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(screen.getByText('Original photo')).toBeTruthy()
+  })
+
+  it('reports a collections load failure and retries', async () => {
+    let calls = 0
+    installFetch((url, init) => {
+      if (
+        url.endsWith('/api/media/collections/') &&
+        (init?.method ?? 'GET') === 'GET'
+      ) {
+        calls += 1
+        if (calls === 1) {
+          return jsonResponse({ detail: 'Collections are unavailable.' }, 503)
+        }
+        return jsonResponse([TRIPS])
+      }
+      return baseHandler()(url, init)
+    })
+    renderPage()
+    await screen.findByText('Original photo')
+
+    expect(await screen.findByText('We couldn’t load your collections')).toBeTruthy()
+    expect(screen.getByText('Collections are unavailable.')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(await screen.findByText('Weekend trips')).toBeTruthy()
+    expect(calls).toBe(2)
+  })
+
+  it('merges media and journal memories into a chronological timeline', async () => {
+    installFetch(baseHandler())
+    renderPage()
+    await screen.findByText('Original photo')
+
+    fireEvent.click(screen.getByRole('button', { name: /Timeline/ }))
+
+    expect(
+      await screen.findByRole('heading', { name: 'Memory timeline' }),
+    ).toBeTruthy()
+    expect(await screen.findByText('3 memories shown')).toBeTruthy()
+    expect(
+      screen.getByRole('button', {
+        name: 'Open journal memory Rainy afternoon',
+      }),
+    ).toBeTruthy()
+    expect(
+      screen.getByRole('button', { name: 'Open AI illustration 12 details' }),
+    ).toBeTruthy()
+    expect(
+      screen.getByRole('button', { name: 'Open Original photo 11 details' }),
+    ).toBeTruthy()
+    expect(screen.getAllByText('AI illustration').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Original photo').length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('link', { name: /Summary #3/ })).toHaveLength(2)
+  })
+
+  it('filters the timeline by type and searches existing metadata', async () => {
+    installFetch(baseHandler())
+    renderPage()
+    await screen.findByText('Original photo')
+    fireEvent.click(screen.getByRole('button', { name: /Timeline/ }))
+    await screen.findByText('3 memories shown')
+
+    fireEvent.change(screen.getByLabelText('Memory type'), {
+      target: { value: 'journal' },
+    })
+    expect(await screen.findByText('1 memory shown')).toBeTruthy()
+    expect(
+      screen.queryByRole('button', { name: 'Open Original photo 11 details' }),
+    ).toBeNull()
+
+    fireEvent.change(screen.getByLabelText('Memory type'), {
+      target: { value: 'all' },
+    })
+    fireEvent.change(screen.getByLabelText('Search memories'), {
+      target: { value: 'comfyui' },
+    })
+    expect(await screen.findByText('1 memory shown')).toBeTruthy()
+    expect(
+      screen.getByRole('button', { name: 'Open AI illustration 12 details' }),
+    ).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('Search memories'), {
+      target: { value: 'no-such-memory' },
+    })
+    expect(
+      await screen.findByText('No memories match these filters'),
+    ).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset filters' }))
+    expect(await screen.findByText('3 memories shown')).toBeTruthy()
+  })
+
+  it('rejects an inverted timeline date range until the dates are cleared', async () => {
+    installFetch(baseHandler())
+    renderPage()
+    await screen.findByText('Original photo')
+    fireEvent.click(screen.getByRole('button', { name: /Timeline/ }))
+    await screen.findByText('3 memories shown')
+
+    fireEvent.change(screen.getByLabelText('From date'), {
+      target: { value: '2026-10-25' },
+    })
+    fireEvent.change(screen.getByLabelText('To date'), {
+      target: { value: '2026-10-01' },
+    })
+
+    expect(await screen.findByText('Check the date range')).toBeTruthy()
+    expect(screen.getByText(/start date is after the end date/i)).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear dates' }))
+    expect(await screen.findByText('3 memories shown')).toBeTruthy()
+  })
+
+  it('reuses the shared favorites state inside the timeline', async () => {
+    let serverMedia: MediaItem[] = [ORIGINAL, GENERATED]
+    const fetchMock = installFetch((url, init) => {
+      const method = init?.method ?? 'GET'
+      if (url.endsWith('/api/media/11/favorite/') && method === 'PATCH') {
+        const body = JSON.parse(String(init?.body)) as { is_favorite: boolean }
+        serverMedia = serverMedia.map((item) =>
+          item.id === 11 ? { ...item, is_favorite: body.is_favorite } : item,
+        )
+        return jsonResponse(serverMedia.find((item) => item.id === 11)!)
+      }
+      if (url.endsWith('/api/media/') && method === 'GET') {
+        return jsonResponse(serverMedia)
+      }
+      return baseHandler()(url, init)
+    })
+    renderPage()
+    await screen.findByText('Original photo')
+    fireEvent.click(screen.getByRole('button', { name: /Timeline/ }))
+    await screen.findByText('3 memories shown')
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Add Original photo 11 to favorites' }),
+    )
+    expect(await screen.findByText('Image #11 added to favorites.')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: /Favorites only/ }))
+    expect(await screen.findByText('1 memory shown')).toBeTruthy()
+    expect(
+      screen.queryByRole('button', {
+        name: 'Open journal memory Rainy afternoon',
+      }),
+    ).toBeNull()
+
+    const patchCall = fetchMock.mock.calls.find(
+      ([url, init]) =>
+        String(url).endsWith('/api/media/11/favorite/') &&
+        init?.method === 'PATCH',
+    )
+    expect(JSON.parse(String(patchCall?.[1]?.body))).toEqual({ is_favorite: true })
+  })
+
+  it('opens a journal memory and its linked media without leaving /app/media', async () => {
+    installFetch(baseHandler())
+    renderPage()
+    await screen.findByText('Original photo')
+    fireEvent.click(screen.getByRole('button', { name: /Timeline/ }))
+    await screen.findByText('3 memories shown')
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Open journal memory Rainy afternoon' }),
+    )
+    const dialog = await screen.findByRole('dialog')
+    expect(
+      within(dialog).getByRole('heading', { name: 'Rainy afternoon' }),
+    ).toBeTruthy()
+    expect(
+      within(dialog).getByText(
+        'Spent the afternoon reading by the window.',
+      ),
+    ).toBeTruthy()
+    expect(
+      within(dialog).getByText(
+        'A quiet afternoon reading by the window.',
+      ),
+    ).toBeTruthy()
+
+    fireEvent.click(
+      within(dialog).getByRole('button', {
+        name: 'Open AI illustration 12 from this memory',
+      }),
+    )
+    await waitFor(() =>
+      expect(
+        screen.queryByText('Spent the afternoon reading by the window.'),
+      ).toBeNull(),
+    )
+    const mediaDialog = await screen.findByRole('dialog')
+    expect(within(mediaDialog).getByText('AI illustration #12')).toBeTruthy()
+    expect(
+      within(mediaDialog).getByRole('link', { name: 'Rainy afternoon' }),
+    ).toBeTruthy()
+  })
+
+  it('scopes the timeline to an active collection and clears the scope', async () => {
+    installFetch(
+      baseHandler({
+        media: [{ ...ORIGINAL, collection_ids: [7] }, GENERATED],
+        collections: [TRIPS],
+      }),
+    )
+    renderPage()
+    await screen.findByText('Weekend trips')
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Open collection Weekend trips' }),
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Timeline/ }))
+
+    expect(await screen.findByText('1 memory shown')).toBeTruthy()
+    expect(
+      screen.queryByRole('button', { name: 'Open AI illustration 12 details' }),
+    ).toBeNull()
+    expect(
+      screen.queryByRole('button', {
+        name: 'Open journal memory Rainy afternoon',
+      }),
+    ).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'All memories' }))
+    expect(await screen.findByText('3 memories shown')).toBeTruthy()
+  })
+
+  it('keeps journal memories visible when media fails and retries media only', async () => {
+    let mediaCalls = 0
+    installFetch((url, init) => {
+      const method = init?.method ?? 'GET'
+      if (url.endsWith('/api/media/') && method === 'GET') {
+        mediaCalls += 1
+        if (mediaCalls === 1) {
+          return jsonResponse({ detail: 'Media are unavailable.' }, 503)
+        }
+        return jsonResponse([ORIGINAL, GENERATED])
+      }
+      return baseHandler()(url, init)
+    })
+    renderPage()
+    await screen.findByText('We couldn’t load your media')
+
+    fireEvent.click(screen.getByRole('button', { name: /Timeline/ }))
+
+    expect(
+      await screen.findByText('Some media couldn’t be loaded'),
+    ).toBeTruthy()
+    expect(screen.getByText('Media are unavailable.')).toBeTruthy()
+    expect(await screen.findByText('1 memory shown')).toBeTruthy()
+    expect(
+      screen.getByRole('button', {
+        name: 'Open journal memory Rainy afternoon',
+      }),
+    ).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reload media' }))
+    expect(
+      await screen.findByRole('button', {
+        name: 'Open Original photo 11 details',
+      }),
+    ).toBeTruthy()
+    expect(await screen.findByText('3 memories shown')).toBeTruthy()
+    expect(mediaCalls).toBe(2)
   })
 })

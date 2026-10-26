@@ -36,7 +36,9 @@ User = get_user_model()
 class SummaryModelTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(
-            username="ada", password="S3cure-Passw0rd!"
+            username="ada",
+            email="ada@example.com",
+            password="S3cure-Passw0rd!",
         )
         self.entry = JournalEntry.objects.create(
             user=self.user,
@@ -170,10 +172,14 @@ class JournalProviderTests(TestCase):
 
     def setUp(self):
         self.alice = User.objects.create_user(
-            username="alice", password="S3cure-Passw0rd!"
+            username="alice",
+            email="alice@example.com",
+            password="S3cure-Passw0rd!",
         )
         self.bob = User.objects.create_user(
-            username="bob", password="S3cure-Passw0rd!"
+            username="bob",
+            email="bob@example.com",
+            password="S3cure-Passw0rd!",
         )
         self.alice_entry = JournalEntry.objects.create(
             user=self.alice,
