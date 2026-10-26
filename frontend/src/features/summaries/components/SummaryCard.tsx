@@ -1,4 +1,5 @@
 import { Button } from '../../../components/Button'
+import { Icon } from '../../../components/Icon'
 import type { Summary } from '../../../types/summaries'
 import { formatDateTime } from '../../../utils/format'
 
@@ -28,15 +29,23 @@ export function SummaryCard({
   const excerpt = snippet?.trim() ? snippet : summary.summary_text
 
   return (
-    <li className="card summary-card">
-      <div className="summary-card__header">
-        <h3 className="card__title">{title}</h3>
-        {summary.mood && <span className="badge badge--neutral">{summary.mood}</span>}
+    <li className="reflection-card">
+      <div className="reflection-card__top">
+        <span className="reflection-card__mark" aria-hidden="true">
+          <Icon name="sparkles" size={16} />
+        </span>
+        <time className="reflection-card__date" dateTime={summary.created_at}>
+          {formatDateTime(summary.created_at)}
+        </time>
+        {summary.mood && (
+          <span className="reflection-card__mood">
+            <Icon name="leaf" size={12} />
+            {summary.mood}
+          </span>
+        )}
       </div>
 
-      <p className="summary-card__source">
-        <time dateTime={summary.created_at}>{formatDateTime(summary.created_at)}</time>
-      </p>
+      <h3 className="reflection-card__title">{title}</h3>
 
       <p className="summary-card__excerpt">{excerpt}</p>
 

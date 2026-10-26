@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'r
 import { Alert } from '../../../components/Alert'
 import { Button } from '../../../components/Button'
 import { FormField } from '../../../components/FormField'
+import { Icon } from '../../../components/Icon'
 import { LoadingState } from '../../../components/LoadingState'
 import { normalizeApiError, type NormalizedErrors } from '../../../services/errors'
 import { mediaApi } from '../../../services/media'
@@ -116,26 +117,16 @@ export function UploadForm({ onUploaded, onView }: UploadFormProps) {
               disabled={submitting}
             />
             <span className="media-dropzone__icon" aria-hidden="true">
-              <svg
-                viewBox="0 0 24 24"
-                width="20"
-                height="20"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M12 16V4" />
-                <path d="m7 9 5-5 5 5" />
-                <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
-              </svg>
+              <Icon name="upload" size={20} />
             </span>
             <span className="media-dropzone__title">
               {file ? 'Choose a different image' : 'Choose an image'}
             </span>
             <span className="media-dropzone__meta">
               {file ? file.name : 'Click this area to browse your files.'}
+            </span>
+            <span className="media-dropzone__formats">
+              JPEG · PNG · WebP · up to 10 MB
             </span>
           </div>
         )}
@@ -173,6 +164,7 @@ export function UploadForm({ onUploaded, onView }: UploadFormProps) {
       {submitting && <LoadingState label="Uploading your image…" />}
 
       <Button type="submit" block disabled={submitting}>
+        <Icon name="upload" size={16} />
         {submitting ? 'Uploading…' : 'Upload image'}
       </Button>
     </form>

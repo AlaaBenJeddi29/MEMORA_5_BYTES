@@ -3,15 +3,29 @@ import { Link } from 'react-router-dom'
 
 import { Alert } from '../../../components/Alert'
 import { Button } from '../../../components/Button'
+import { ConfirmDialog } from '../../../components/ConfirmDialog'
 import { EmptyState } from '../../../components/EmptyState'
+import { Icon } from '../../../components/Icon'
 import { LoadingState } from '../../../components/LoadingState'
 import { PageHeader } from '../../../components/PageHeader'
+import { StatusBadge } from '../../../components/StatusBadge'
 import { useDocumentTitle } from '../../../hooks/useDocumentTitle'
+import { formatPeopleDateTime } from '../formatPeopleDate'
 import { PeopleNav } from '../components/PeopleNav'
 import { PersonForm, type PersonFormValues } from '../components/PersonForm'
 import { describeApiError } from '../describeApiError'
 import { peopleApi } from '../peopleApi'
 import type { Person } from '../types'
+import '../people.css'
+
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('')
+}
 
 export function PeoplePage() {
   useDocumentTitle('Personnes · MEMORA')
@@ -21,7 +35,8 @@ export function PeoplePage() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
-  const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Person | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -52,32 +67,35 @@ export function PeoplePage() {
     setEditingId(null)
   }
 
-  async function handleDelete(person: Person) {
-    if (!window.confirm(`Supprimer « ${person.name} » ?`)) {
+  async function confirmDelete() {
+    if (!deleteTarget) {
       return
     }
 
     setActionError(null)
-    setDeletingId(person.id)
+    setDeleting(true)
     try {
-      await peopleApi.remove(person.id)
-      if (editingId === person.id) {
+      await peopleApi.remove(deleteTarget.id)
+      if (editingId === deleteTarget.id) {
         setEditingId(null)
       }
+      setDeleteTarget(null)
       await load()
     } catch (error) {
       setActionError(describeApiError(error))
     } finally {
-      setDeletingId(null)
+      setDeleting(false)
     }
   }
 
   return (
-    <>
+    <div className="people-page">
       <PeopleNav section="people" />
 
       <PageHeader
+        eyebrow="Personnes & visages"
         title="Personnes"
+        badge={<StatusBadge status="neutral">Privé</StatusBadge>}
         description="Les personnes qui apparaissent dans vos souvenirs."
       />
 
@@ -87,97 +105,147 @@ export function PeoplePage() {
         </Alert>
       )}
 
-      <div className="card">
-        <h2>Ajouter une personne</h2>
-        <PersonForm submitLabel="Ajouter" onSave={handleCreate} />
-      </div>
-
-      <h2>Mes personnes</h2>
-
-      {loading && <LoadingState label="Chargement des personnes…" />}
-
-      {!loading && loadError && (
-        <div className="stack">
-          <Alert variant="error" title="Impossible de charger les personnes">
-            {loadError}
-          </Alert>
-          <Button variant="secondary" onClick={() => void load()}>
-            Réessayer
-          </Button>
+      <section className="people-add" aria-labelledby="people-add-heading">
+        <div className="people-add__intro">
+          <span className="people-add__icon" aria-hidden="true">
+            <Icon name="users" size={20} />
+          </span>
+          <div>
+            <h2 id="people-add-heading">Ajouter une personne</h2>
+            <p>
+              Donnez un visage à vos souvenirs. Un nom suffit ; l’avatar reste
+              optionnel.
+            </p>
+          </div>
         </div>
-      )}
+        <PersonForm submitLabel="Ajouter" onSave={handleCreate} />
+      </section>
 
-      {!loading && !loadError && people.length === 0 && (
-        <EmptyState
-          title="Aucune personne"
-          description="Ajoutez une première personne avec le formulaire ci-dessus."
-        />
-      )}
+      <section className="people-list" aria-labelledby="people-list-heading">
+        <div className="people-list__head">
+          <div>
+            <p className="eyebrow">Votre cercle</p>
+            <h2 id="people-list-heading">Mes personnes</h2>
+          </div>
+          {!loading && !loadError && people.length > 0 && (
+            <p className="people-count">
+              {people.length} {people.length > 1 ? 'personnes' : 'personne'}
+            </p>
+          )}
+        </div>
 
-      {!loading && !loadError && people.length > 0 && (
-        <ul className="card-grid">
-          {people.map((person) => (
-            <li className="card" key={person.id}>
-              {person.avatar ? (
-                <img
-                  src={person.avatar}
-                  alt={`Avatar de ${person.name}`}
-                  style={{
-                    width: 72,
-                    height: 72,
-                    borderRadius: '50%',
-                    objectFit: 'cover',
-                  }}
-                />
-              ) : (
-                <div
-                  aria-hidden="true"
-                  style={{
-                    width: 72,
-                    height: 72,
-                    borderRadius: '50%',
-                    background: 'var(--surface-muted)',
-                    border: '1px solid var(--border)',
-                  }}
-                />
-              )}
+        {loading && <LoadingState label="Chargement des personnes…" />}
 
-              <h3 className="card__title">
-                <Link to={`/app/people/${person.id}`}>{person.name}</Link>
-              </h3>
+        {!loading && loadError && (
+          <div className="people-error">
+            <Alert variant="error" title="Impossible de charger les personnes">
+              {loadError}
+            </Alert>
+            <Button variant="secondary" onClick={() => void load()}>
+              <Icon name="refresh" size={15} />
+              Réessayer
+            </Button>
+          </div>
+        )}
 
-              <div className="card__foot cluster">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setEditingId(editingId === person.id ? null : person.id)}
-                >
-                  {editingId === person.id ? 'Fermer' : 'Modifier'}
-                </Button>
-                <Button
-                  variant="danger"
-                  size="sm"
-                  disabled={deletingId === person.id}
-                  onClick={() => void handleDelete(person)}
-                >
-                  {deletingId === person.id ? 'Suppression…' : 'Supprimer'}
-                </Button>
-              </div>
+        {!loading && !loadError && people.length === 0 && (
+          <EmptyState
+            icon="users"
+            title="Aucune personne"
+            description="Ajoutez une première personne avec le formulaire ci-dessus."
+          />
+        )}
 
-              {editingId === person.id && (
-                <PersonForm
-                  key={person.id}
-                  initialName={person.name}
-                  currentAvatarUrl={person.avatar}
-                  submitLabel="Enregistrer"
-                  onSave={(values) => handleUpdate(person, values)}
-                  onCancel={() => setEditingId(null)}
-                />
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-    </>
+        {!loading && !loadError && people.length > 0 && (
+          <ul className="person-grid">
+            {people.map((person) => (
+              <li className="person-card" key={person.id}>
+                <div className="person-card__top">
+                  {person.avatar ? (
+                    <img
+                      className="person-card__avatar"
+                      src={person.avatar}
+                      alt={`Avatar de ${person.name}`}
+                    />
+                  ) : (
+                    <span className="person-card__avatar person-card__avatar--empty">
+                      {initials(person.name)}
+                    </span>
+                  )}
+                  <div className="person-card__identity">
+                    <h3 className="person-card__name">
+                      <Link to={`/app/people/${person.id}`}>{person.name}</Link>
+                    </h3>
+                    <p className="person-card__meta">
+                      <Icon name="calendar" size={12} />
+                      Ajoutée le {formatPeopleDateTime(person.created_at)}
+                    </p>
+                  </div>
+                </div>
+
+                <Link className="person-card__album" to={`/app/people/${person.id}`}>
+                  Voir l’album
+                  <Icon name="arrowRight" size={14} />
+                </Link>
+
+                <div className="person-card__actions">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() =>
+                      setEditingId(editingId === person.id ? null : person.id)
+                    }
+                  >
+                    <Icon name={editingId === person.id ? 'close' : 'edit'} size={14} />
+                    {editingId === person.id ? 'Fermer' : 'Modifier'}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="person-card__delete"
+                    onClick={() => setDeleteTarget(person)}
+                  >
+                    <Icon name="trash" size={14} />
+                    Supprimer
+                  </Button>
+                </div>
+
+                {editingId === person.id && (
+                  <div className="person-card__editor">
+                    <PersonForm
+                      key={person.id}
+                      initialName={person.name}
+                      currentAvatarUrl={person.avatar}
+                      submitLabel="Enregistrer"
+                      onSave={(values) => handleUpdate(person, values)}
+                      onCancel={() => setEditingId(null)}
+                    />
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Supprimer cette personne ?"
+        message={
+          deleteTarget
+            ? `« ${deleteTarget.name} » sera retirée de vos personnes. Les photos restent intactes.`
+            : undefined
+        }
+        confirmLabel="Supprimer la personne"
+        cancelLabel="Annuler"
+        busy={deleting}
+        onConfirm={() => void confirmDelete()}
+        onCancel={() => {
+          if (!deleting) {
+            setDeleteTarget(null)
+          }
+        }}
+      />
+    </div>
   )
 }

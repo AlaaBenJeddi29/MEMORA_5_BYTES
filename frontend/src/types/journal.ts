@@ -31,3 +31,25 @@ export interface JournalSearchParams {
   date_to?: string
   page?: number
 }
+
+export interface AdvancedSearchParams {
+  query?: string
+  date_from?: string
+  date_to?: string
+  sentiment?: string
+  use_ai?: boolean
+  isAdvanced?: boolean
+}
+
+export interface AiAnalysis {
+  query: string
+  extracted_sentiments: string[]
+  extracted_themes: string[]
+  summary: string
+}
+
+export interface AdvancedSearchResult {
+  results: JournalEntry[]
+  total: number
+  ai_analysis?: AiAnalysis
+}

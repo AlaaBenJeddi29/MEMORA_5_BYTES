@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Alert } from '../../../components/Alert'
 import { Button } from '../../../components/Button'
 import { EmptyState } from '../../../components/EmptyState'
+import { Icon } from '../../../components/Icon'
 import { LoadingState } from '../../../components/LoadingState'
 import { PageHeader } from '../../../components/PageHeader'
 import { useDocumentTitle } from '../../../hooks/useDocumentTitle'
@@ -255,10 +256,11 @@ export function SummariesPage() {
   }
 
   return (
-    <>
+    <div className="reflections-page">
       <PageHeader
-        title="Summaries"
-        description="AI-generated recaps of your journal entries. Generation runs on the server; editing and deleting never contact the model."
+        eyebrow="AI reflections"
+        title="Reflections"
+        description="Short recaps written from your own journal entries. Generation runs on your server; writing, editing and deleting here never contact the model."
         actions={
           <>
             <Button
@@ -270,9 +272,13 @@ export function SummariesPage() {
               Open memory book
             </Button>
             <Button variant="secondary" onClick={() => openDialog({ kind: 'create' })}>
+              <Icon name="pen" size={15} />
               New summary
             </Button>
-            <Button onClick={() => openDialog({ kind: 'generate' })}>Generate summary</Button>
+            <Button onClick={() => openDialog({ kind: 'generate' })}>
+              <Icon name="sparkles" size={16} />
+              Generate summary
+            </Button>
           </>
         }
       />
@@ -291,11 +297,7 @@ export function SummariesPage() {
             ))}
           </ul>
           <div className="alert__actions">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => void loadSummaries('refresh')}
-            >
+            <Button variant="secondary" size="sm" onClick={() => void loadSummaries('refresh')}>
               Try again
             </Button>
           </div>
@@ -518,6 +520,6 @@ export function SummariesPage() {
           onGenerated={() => completeMutation('Summary generated.')}
         />
       )}
-    </>
+    </div>
   )
 }

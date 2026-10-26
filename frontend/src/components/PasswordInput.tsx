@@ -1,5 +1,7 @@
 import { forwardRef, useState, type InputHTMLAttributes } from 'react'
 
+import { Icon } from './Icon'
+
 export type PasswordInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'type'>
 
 /** A password input with an accessible show/hide toggle. */
@@ -24,7 +26,7 @@ export const PasswordInput = forwardRef<HTMLInputElement, PasswordInputProps>(fu
         aria-pressed={visible}
         aria-label={visible ? 'Hide password' : 'Show password'}
       >
-        {visible ? 'Hide' : 'Show'}
+        <Icon name={visible ? 'eyeOff' : 'eye'} size={17} />
       </button>
     </div>
   )

@@ -49,7 +49,6 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
       if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
       streamRef.current?.getTracks().forEach((t) => t.stop())
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const start = useCallback(async () => {

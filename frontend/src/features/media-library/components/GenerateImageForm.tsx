@@ -3,6 +3,7 @@ import { useId, useRef, useState, type FormEvent } from 'react'
 import { Alert } from '../../../components/Alert'
 import { Button } from '../../../components/Button'
 import { FormField } from '../../../components/FormField'
+import { Icon } from '../../../components/Icon'
 import { LoadingState } from '../../../components/LoadingState'
 import { normalizeApiError, type NormalizedErrors } from '../../../services/errors'
 import { isRetryableGenerationError, mediaApi } from '../../../services/media'
@@ -218,7 +219,7 @@ export function GenerateImageForm({
     <form className="form media-form media-generator" onSubmit={handleSubmit} noValidate aria-busy={generating}>
       <p className="media-ai-note">
         <span className="media-ai-note__mark" aria-hidden="true">
-          AI
+          <Icon name="sparkles" size={14} />
         </span>
         <span>
           <strong>These images are illustrations.</strong> Output is AI-generated,
@@ -254,7 +255,10 @@ export function GenerateImageForm({
                 {prompt.length} / {MAX_PROMPT_LENGTH} characters
               </p>
               <div className="media-prompt-examples">
-                <span className="media-prompt-examples__label">Try an example</span>
+                <span className="media-prompt-examples__label">
+                  <Icon name="plus" size={12} />
+                  Try an example
+                </span>
                 {PROMPT_EXAMPLES.map((example) => (
                   <button
                     key={example}
@@ -363,6 +367,7 @@ export function GenerateImageForm({
 
       <div className="media-form-actions">
         <Button type="submit" disabled={generating || !consented}>
+          <Icon name="sparkles" size={16} />
           {generating ? 'Generating…' : 'Generate illustration'}
         </Button>
         {retryable && !generating && (
@@ -371,6 +376,7 @@ export function GenerateImageForm({
             disabled={!consented}
             onClick={() => void runGeneration()}
           >
+            <Icon name="refresh" size={15} />
             Try again
           </Button>
         )}
@@ -435,6 +441,7 @@ export function GenerateImageForm({
             </p>
             <div className="media-form-actions">
               <Button size="sm" variant="secondary" onClick={() => onView(result)}>
+                <Icon name="eye" size={14} />
                 View details
               </Button>
             </div>

@@ -32,3 +32,12 @@ class JournalEntrySerializer(serializers.ModelSerializer):
             'photos',
         ]
         read_only_fields = ['id', 'created_at', 'user']
+
+
+class AdvancedSearchResultSerializer(serializers.Serializer):
+    """Serialize advanced search results with AI analysis."""
+
+    results = JournalEntrySerializer(many=True, read_only=True)
+    total = serializers.IntegerField(read_only=True)
+    ai_analysis = serializers.DictField(required=False, read_only=True)
+

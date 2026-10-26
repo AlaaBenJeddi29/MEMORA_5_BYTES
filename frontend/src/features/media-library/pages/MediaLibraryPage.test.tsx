@@ -123,7 +123,10 @@ function baseHandler({
 
 function renderPage(initialEntries: string[] = ['/app/media']) {
   return render(
-    <MemoryRouter initialEntries={initialEntries}>
+    <MemoryRouter
+      initialEntries={initialEntries}
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    >
       <MediaLibraryPage />
     </MemoryRouter>,
   )

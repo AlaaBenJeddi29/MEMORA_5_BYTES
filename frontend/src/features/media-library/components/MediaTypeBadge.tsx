@@ -1,3 +1,4 @@
+import { Icon } from '../../../components/Icon'
 import type { MediaType } from '../../../types/media'
 import { MEDIA_TYPE_LABELS } from '../mediaHelpers'
 
@@ -7,7 +8,7 @@ export function MediaTypeBadge({ type }: { type: MediaType }) {
 
   return (
     <span className={`media-type media-type--${modifier}`}>
-      <span className="media-type__dot" aria-hidden="true" />
+      <Icon name={type === 'ai_generated' ? 'sparkles' : 'camera'} size={11} />
       {MEDIA_TYPE_LABELS[type]}
     </span>
   )
