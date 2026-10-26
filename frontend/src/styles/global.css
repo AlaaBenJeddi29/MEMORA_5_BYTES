@@ -1447,6 +1447,43 @@ select.input {
   outline: none;
 }
 
+.memory-book__breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: var(--space-4);
+  font-size: var(--text-xs);
+  color: var(--book-nav-text);
+}
+
+.memory-book__crumb-link {
+  padding: 0.15rem 0.1rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.memory-book__crumb-link:hover {
+  opacity: 0.72;
+}
+
+.memory-book__crumb-link:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+.memory-book__crumb-current {
+  font-weight: 600;
+  opacity: 0.8;
+}
+
 .memory-book__eyebrow {
   margin: 0;
   font-family: var(--font-sans);

@@ -374,6 +374,10 @@ describe('SummariesPage', () => {
     expect(await screen.findByText('Summary generated.')).toBeTruthy()
     expect(await screen.findByText(generated.summary_text)).toBeTruthy()
 
+    const card = screen.getByText(generated.summary_text).closest('li')
+    expect(card?.classList.contains('is-highlighted')).toBe(true)
+    expect(document.activeElement).toBe(card)
+
     const calls = callsOf(fetchMock)
     expect(calls.some((call) => call.url.endsWith(JOURNAL_PICKER_URL))).toBe(true)
     const generate = calls.find((call) =>
@@ -386,6 +390,101 @@ describe('SummariesPage', () => {
     expect((generate?.init.headers as Record<string, string>)['X-CSRFToken']).toBe(
       'test-token',
     )
+  })
+
+  it('keeps the generated card when the list refresh fails', async () => {
+    const generated: Summary = {
+      ...SUMMARY,
+      id: 14,
+      journal_entry_id: 2,
+      summary_text: 'A recap that survives a failed refresh.',
+    }
+    let listCalls = 0
+
+    installFetch(({ url, init }) => {
+      const method = init.method ?? 'GET'
+      if (url.endsWith('/api/summaries/') && method === 'GET') {
+        listCalls += 1
+        if (listCalls === 1) {
+          return jsonResponse([])
+        }
+        throw new TypeError('Failed to fetch')
+      }
+      if (url.endsWith(JOURNAL_PICKER_URL)) {
+        return jsonResponse(JOURNAL_PAGE)
+      }
+      if (url.endsWith('/api/summaries/generate/') && method === 'POST') {
+        return jsonResponse(generated, 201)
+      }
+      throw new Error(`Unexpected request: ${method} ${url}`)
+    })
+
+    render(<SummariesPage />)
+    await screen.findByText('No summaries yet')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate summary' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Generate a summary' })
+    const select = await within(dialog).findByLabelText(/Journal entry/)
+    fireEvent.change(select, { target: { value: '2' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Generate summary' }))
+
+    expect(await screen.findByText('Summary generated.')).toBeTruthy()
+    expect(await screen.findByText(generated.summary_text)).toBeTruthy()
+    expect(
+      await screen.findByText('We couldn’t refresh your summaries'),
+    ).toBeTruthy()
+    expect(screen.getByText(generated.summary_text)).toBeTruthy()
+    expect(listCalls).toBe(2)
+  })
+
+  it('clears an active search so the generated card is visible', async () => {
+    const generated: Summary = {
+      ...SUMMARY,
+      id: 15,
+      journal_entry_id: 2,
+      summary_text: 'A recap after a concept search.',
+    }
+    const hit = searchHitOf({ ...SUMMARY }, { snippet: 'A calm morning walk.' })
+    let listCalls = 0
+
+    installFetch(({ url, init }) => {
+      const method = init.method ?? 'GET'
+      if (url.endsWith('/api/summaries/') && method === 'GET') {
+        listCalls += 1
+        return jsonResponse(listCalls === 1 ? [SUMMARY] : [generated, SUMMARY])
+      }
+      if (isSearchCall({ url, init })) {
+        return jsonResponse(searchPageOf([hit]))
+      }
+      if (url.endsWith(JOURNAL_PICKER_URL)) {
+        return jsonResponse(JOURNAL_PAGE)
+      }
+      if (url.endsWith('/api/summaries/generate/') && method === 'POST') {
+        return jsonResponse(generated, 201)
+      }
+      throw new Error(`Unexpected request: ${method} ${url}`)
+    })
+
+    render(<SummariesPage />)
+    await screen.findByText(SUMMARY.summary_text)
+
+    fireEvent.change(screen.getByLabelText(SEARCH_LABEL), {
+      target: { value: 'calme' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Rechercher' }))
+    await screen.findByRole('list', { name: 'Résultats de recherche' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate summary' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Generate a summary' })
+    const select = await within(dialog).findByLabelText(/Journal entry/)
+    fireEvent.change(select, { target: { value: '2' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Generate summary' }))
+
+    expect(await screen.findByText('Summary generated.')).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Your summaries' })).toBeTruthy()
+    expect((screen.getByLabelText(SEARCH_LABEL) as HTMLInputElement).value).toBe('')
+    expect(screen.queryByRole('list', { name: 'Résultats de recherche' })).toBeNull()
+    expect(await screen.findByText(generated.summary_text)).toBeTruthy()
   })
 
   it('keeps the generate dialog open and reports a Gemini failure', async () => {
@@ -999,6 +1098,32 @@ describe('SummariesPage memory book', () => {
     )
     expect(listCalls).toBe(1)
     expect(searchCalls).toBe(1)
+  })
+
+  it('opens a list card at its page and restores focus when closed', async () => {
+    installFetch(({ url }) => {
+      if (url.endsWith('/api/summaries/')) {
+        return jsonResponse([SUMMARY])
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    render(<SummariesPage />)
+    await screen.findByText(SUMMARY.summary_text)
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Read summary 1 in the book' }),
+    )
+
+    expect(screen.getByRole('region', { name: 'Memory book' })).toBeTruthy()
+    expect(screen.getByText('Page 1 of 1')).toBeTruthy()
+    expect(screen.getByText(SUMMARY.summary_text)).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close book' }))
+
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Read summary 1 in the book' }),
+    )
   })
 
   it('shows the empty cover when there are no memories and can return', async () => {

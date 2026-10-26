@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}Page not found · MEMORA{% endblock %}
+
+{% block content %}
+<section class="status-page" aria-labelledby="error-heading">
+    <p class="eyebrow">404</p>
+    <h1 id="error-heading">We couldn’t find that page</h1>
+    <p>
+        The link may be outdated, or the page may have been removed. Nothing
+        in your journal was deleted.
+    </p>
+    <p>
+        <a class="button-link" href="{% url 'people:person_list' %}">Return to your journal</a>
+    </p>
+</section>
+{% endblock %}

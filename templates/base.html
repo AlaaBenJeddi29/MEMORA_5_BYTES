@@ -15,6 +15,11 @@
             background: #333;
             color: #fff;
             padding: 12px 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: center;
+            justify-content: space-between;
         }
         header a {
             color: #fff;
@@ -22,6 +27,12 @@
         }
         header form {
             display: inline;
+        }
+        header nav {
+            display: inline;
+        }
+        .who {
+            margin-right: 12px;
         }
         main {
             max-width: 900px;
@@ -49,22 +60,175 @@
         button {
             cursor: pointer;
         }
+
+        /* Auth and status pages */
+        .auth-page,
+        .status-page {
+            max-width: 460px;
+            margin: 24px auto;
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            padding: 24px;
+        }
+        .auth-page h1,
+        .status-page h1 {
+            margin-top: 0;
+            font-size: 1.55rem;
+        }
+        .eyebrow {
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            font-size: 0.73rem;
+            color: #666;
+            margin: 0 0 6px;
+        }
+        .auth-lede {
+            color: #555;
+            margin-top: 0;
+        }
+        .auth-card {
+            margin-top: 18px;
+        }
+        .field {
+            margin-bottom: 16px;
+        }
+        .field label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .input {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 10px;
+            border: 1px solid #b9b9b9;
+            border-radius: 6px;
+            font: inherit;
+        }
+        .helptext {
+            color: #5c5c5c;
+            font-size: 0.87rem;
+            margin: 4px 0 0;
+        }
+        .fielderror,
+        .errorlist {
+            color: #a11313;
+            font-size: 0.9rem;
+            margin: 4px 0 0;
+        }
+        .errorlist {
+            padding-left: 18px;
+        }
+        .form-alert {
+            background: #fdecec;
+            border: 1px solid #e0a3a3;
+            border-radius: 6px;
+            padding: 10px 12px;
+            margin: 14px 0;
+        }
+        .form-alert ul {
+            margin: 6px 0 0;
+            padding-left: 18px;
+        }
+        .messages {
+            max-width: 900px;
+            margin: 14px auto 0;
+            padding: 0 15px;
+            list-style: none;
+        }
+        .messages li {
+            background: #eef6ee;
+            border: 1px solid #a9c9a9;
+            border-radius: 6px;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+        }
+        .messages li.error {
+            background: #fdecec;
+            border-color: #e0a3a3;
+        }
+        .button-primary,
+        .button-link {
+            display: inline-block;
+            padding: 10px 16px;
+            border-radius: 6px;
+            border: 1px solid #333;
+            background: #333;
+            color: #fff;
+            text-decoration: none;
+            font: inherit;
+            cursor: pointer;
+        }
+        .button-link {
+            background: #fff;
+            color: #222;
+            margin-right: 10px;
+        }
+        button.button-primary {
+            width: 100%;
+        }
+        .auth-switch {
+            margin-top: 16px;
+            font-size: 0.92rem;
+        }
+        a:focus-visible,
+        button:focus-visible,
+        .input:focus-visible,
+        .button-primary:focus-visible,
+        .button-link:focus-visible {
+            outline: 3px solid #7b5ea7;
+            outline-offset: 2px;
+        }
+        .skip-link {
+            position: absolute;
+            left: -9999px;
+            top: 0;
+            background: #fff;
+            color: #222;
+            padding: 8px 12px;
+            z-index: 10;
+        }
+        .skip-link:focus {
+            left: 8px;
+            top: 8px;
+        }
     </style>
 </head>
 <body>
+    <a class="skip-link" href="#main-content">Aller au contenu principal</a>
     <header>
-        <a href="{% url 'people:person_list' %}">Personnes</a>
-        <a href="{% url 'people:photo_list' %}">Photos</a>
-        <a href="/admin/">Admin</a>
+        <nav aria-label="Navigation principale">
+            <a href="{% url 'people:person_list' %}">Personnes</a>
+            <a href="{% url 'people:photo_list' %}">Photos</a>
+            {% if user.is_authenticated %}
+                <a href="{% url 'password_change' %}">Mot de passe</a>
+                {% if user.is_staff %}
+                    <a href="{% url 'admin:index' %}">Administration</a>
+                {% endif %}
+            {% endif %}
+        </nav>
         {% if user.is_authenticated %}
-            <span>Connecté : {{ user.username }}</span>
-            <form method="post" action="{% url 'admin:logout' %}">
+            <span class="who">
+                Connecté : {{ user.get_full_name|default:user.username }}
+                {% if user.get_role_display %}· {{ user.get_role_display }}{% endif %}
+            </span>
+            <form method="post" action="{% url 'logout' %}">
                 {% csrf_token %}
                 <button type="submit">Déconnexion</button>
             </form>
+        {% else %}
+            <a href="{% url 'login' %}">Connexion</a>
         {% endif %}
     </header>
-    <main>
+    {% if messages %}
+        <ul class="messages">
+            {% for message in messages %}
+                <li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+    <main id="main-content">
         {% block content %}{% endblock %}
     </main>
 </body>

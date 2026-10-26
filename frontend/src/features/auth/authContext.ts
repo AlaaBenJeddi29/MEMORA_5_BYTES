@@ -1,6 +1,6 @@
 import { createContext } from 'react'
 
-import type { LoginInput, RegisterInput, User } from '../../types/auth'
+import type { LoginInput, RegisterInput, RegisterResult, User } from '../../types/auth'
 
 export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated'
 
@@ -8,7 +8,8 @@ export interface AuthContextValue {
   user: User | null
   status: AuthStatus
   login: (input: LoginInput) => Promise<User>
-  register: (input: RegisterInput) => Promise<User>
+  /** Creates an inactive account; the user signs in only after verification. */
+  register: (input: RegisterInput) => Promise<RegisterResult>
   logout: () => Promise<void>
   /** Re-reads the current user from `GET /api/accounts/me/`. */
   refresh: () => Promise<void>

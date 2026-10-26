@@ -1,0 +1,13 @@
+[run]
+source = apps.accounts
+omit =
+    apps/accounts/migrations/*
+    apps/accounts/tests.py
+
+[report]
+show_missing = True
+skip_covered = True
+fail_under = 85
+
+[html]
+directory = htmlcov

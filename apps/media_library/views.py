@@ -11,6 +11,7 @@ import logging
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.db import transaction
+from django.shortcuts import get_object_or_404
 from rest_framework import generics, status
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
@@ -25,9 +26,13 @@ from .comfyui import (
     ComfyUIUnavailableError,
     build_client,
 )
-from .models import MediaFile
+from .models import MediaCollection, MediaFile
 from .serializers import (
+    CollectionItemSerializer,
+    FavoriteUpdateSerializer,
     GenerateImageSerializer,
+    MediaCollectionDetailSerializer,
+    MediaCollectionSerializer,
     MediaFileDetailSerializer,
     MediaFileSerializer,
 )
@@ -57,7 +62,7 @@ class MediaFileListCreateView(generics.ListCreateAPIView):
         return (
             MediaFile.objects.filter(owner=self.request.user)
             .select_related("summary")
-            .prefetch_related("journal_entries")
+            .prefetch_related("journal_entries", "collections")
         )
 
     def perform_create(self, serializer):
@@ -79,7 +84,7 @@ class MediaFileDetailView(generics.RetrieveUpdateDestroyAPIView):
         return (
             MediaFile.objects.filter(owner=self.request.user)
             .select_related("summary")
-            .prefetch_related("journal_entries")
+            .prefetch_related("journal_entries", "collections")
         )
 
     def perform_destroy(self, instance):
@@ -197,3 +202,116 @@ class GenerateImageView(APIView):
             context={"request": request},
         )
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+
+
+class MediaFavoriteView(APIView):
+    """Set or clear the favorite flag on one owned media item."""
+
+    permission_classes = [IsAuthenticated]
+    parser_classes = [JSONParser]
+
+    def patch(self, request, pk):
+        media = get_object_or_404(MediaFile, pk=pk, owner=request.user)
+        serializer = FavoriteUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        media.is_favorite = serializer.validated_data["is_favorite"]
+        media.save(update_fields=["is_favorite", "updated_at"])
+        return Response(
+            MediaFileSerializer(media, context={"request": request}).data
+        )
+
+
+class MediaCollectionListCreateView(generics.ListCreateAPIView):
+    """List the caller's collections or create a new one."""
+
+    serializer_class = MediaCollectionSerializer
+    permission_classes = [IsAuthenticated]
+    parser_classes = [JSONParser]
+
+    def get_queryset(self):
+        return MediaCollection.objects.filter(
+            owner=self.request.user
+        ).prefetch_related("items")
+
+    def perform_create(self, serializer):
+        serializer.save(owner=self.request.user)
+
+
+class MediaCollectionDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Retrieve, rename, or delete one owned collection.
+
+    Deleting a collection removes only the grouping and its join rows. Media
+    rows and stored files are left untouched.
+    """
+
+    permission_classes = [IsAuthenticated]
+    parser_classes = [JSONParser]
+
+    def get_queryset(self):
+        return MediaCollection.objects.filter(
+            owner=self.request.user
+        ).prefetch_related("items__journal_entries", "items__collections")
+
+    def get_serializer_class(self):
+        if self.request.method == "GET":
+            return MediaCollectionDetailSerializer
+        return MediaCollectionSerializer
+
+
+class MediaCollectionItemsView(APIView):
+    """Add one owned media item to an owned collection."""
+
+    permission_classes = [IsAuthenticated]
+    parser_classes = [JSONParser]
+
+    def post(self, request, pk):
+        collection = get_object_or_404(
+            MediaCollection,
+            pk=pk,
+            owner=request.user,
+        )
+        serializer = CollectionItemSerializer(
+            data=request.data,
+            context={"request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+        media = get_object_or_404(
+            MediaFile,
+            pk=serializer.validated_data["media_id"],
+            owner=request.user,
+        )
+
+        already_added = collection.items.filter(pk=media.pk).exists()
+        if not already_added:
+            collection.items.add(media)
+            collection.save(update_fields=["updated_at"])
+
+        response_status = (
+            status.HTTP_200_OK if already_added else status.HTTP_201_CREATED
+        )
+        return Response(
+            MediaFileSerializer(media, context={"request": request}).data,
+            status=response_status,
+        )
+
+
+class MediaCollectionItemDetailView(APIView):
+    """Remove one owned media item from an owned collection."""
+
+    permission_classes = [IsAuthenticated]
+    parser_classes = [JSONParser]
+
+    def delete(self, request, pk, media_id):
+        collection = get_object_or_404(
+            MediaCollection,
+            pk=pk,
+            owner=request.user,
+        )
+        media = get_object_or_404(
+            MediaFile,
+            pk=media_id,
+            owner=request.user,
+        )
+        collection.items.remove(media)
+        collection.save(update_fields=["updated_at"])
+        return Response(status=status.HTTP_204_NO_CONTENT)

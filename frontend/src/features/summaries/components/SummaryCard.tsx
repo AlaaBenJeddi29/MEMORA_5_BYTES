@@ -12,6 +12,8 @@ export interface SummaryCardProps {
   onDelete: (summary: Summary) => void
   /** Optional shortcut to this memory's page in the memory book. */
   onOpenInBook?: (summary: Summary) => void
+  /** Briefly emphasises the card and makes it a focus target. */
+  highlighted?: boolean
 }
 
 export function SummaryCard({
@@ -21,6 +23,7 @@ export function SummaryCard({
   onEdit,
   onDelete,
   onOpenInBook,
+  highlighted = false,
 }: SummaryCardProps) {
   const title =
     summary.journal_entry_id === null
@@ -29,7 +32,13 @@ export function SummaryCard({
   const excerpt = snippet?.trim() ? snippet : summary.summary_text
 
   return (
-    <li className="reflection-card">
+    <li
+      className={
+        highlighted ? 'reflection-card is-highlighted' : 'reflection-card'
+      }
+      data-summary-card={summary.id}
+      tabIndex={-1}
+    >
       <div className="reflection-card__top">
         <span className="reflection-card__mark" aria-hidden="true">
           <Icon name="sparkles" size={16} />

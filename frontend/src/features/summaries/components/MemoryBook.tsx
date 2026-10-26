@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, TouchEvent } from 'react'
 
 import { Button } from '../../../components/Button'
+import { Icon } from '../../../components/Icon'
 import { useMediaQuery } from '../../../hooks/useMediaQuery'
 import type { BookPreferences } from '../../../types/bookPreferences'
 import type { Summary } from '../../../types/summaries'
@@ -164,6 +165,20 @@ export function MemoryBook({
       tabIndex={-1}
       onKeyDown={showCover ? undefined : handleKeyDown}
     >
+      <nav className="memory-book__breadcrumb" aria-label="Breadcrumb">
+        <button
+          type="button"
+          className="memory-book__crumb-link"
+          onClick={onClose}
+        >
+          Reflections
+        </button>
+        <Icon name="chevronRight" size={12} />
+        <span className="memory-book__crumb-current" aria-current="page">
+          My Story
+        </span>
+      </nav>
+
       {showCover ? (
         <MemoryBookCover
           summaries={sorted}

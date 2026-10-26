@@ -40,6 +40,7 @@ class MediaFile(models.Model):
         choices=Status.choices,
         default=Status.SUCCEEDED,
     )
+    is_favorite = models.BooleanField(default=False, db_index=True)
 
     # Journal provenance uses JournalEntry.photos (related_name
     # "journal_entries") rather than a second competing journal relation.
@@ -67,3 +68,44 @@ class MediaFile(models.Model):
 
     def __str__(self):
         return f"{self.get_media_type_display()} media #{self.pk}"
+
+
+class MediaCollection(models.Model):
+    """A user-owned grouping of media.
+
+    Deleting a collection removes only the grouping and its join rows; the
+    underlying ``MediaFile`` rows and stored files are never deleted here.
+    """
+
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="media_collections",
+    )
+    name = models.CharField(max_length=80)
+    description = models.TextField(max_length=500, blank=True, default="")
+    items = models.ManyToManyField(
+        MediaFile,
+        related_name="collections",
+        blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("-updated_at", "-id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("owner", "name"),
+                name="media_collection_owner_name_uniq",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=("owner", "-updated_at"),
+                name="media_collection_owner_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.name} (#{self.pk})"

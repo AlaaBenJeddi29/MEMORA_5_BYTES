@@ -98,6 +98,22 @@
   box-shadow: var(--shadow-md);
 }
 
+.reflection-card:focus {
+  outline: none;
+}
+
+.reflection-card:focus-visible {
+  outline: 2px solid var(--lavender-strong);
+  outline-offset: 3px;
+}
+
+.reflection-card.is-highlighted {
+  border-color: var(--lavender-strong);
+  box-shadow:
+    0 0 0 3px rgba(151, 125, 189, 0.34),
+    var(--shadow-md);
+}
+
 .reflection-card__top {
   display: flex;
   align-items: center;

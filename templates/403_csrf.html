@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block title %}Session check failed · MEMORA{% endblock %}
+
+{% block content %}
+<section class="status-page" aria-labelledby="error-heading">
+    <p class="eyebrow">403</p>
+    <h1 id="error-heading">Your session check failed</h1>
+    <p>
+        The form was not submitted because the security token was missing or
+        expired. Sign in again, then retry the action from the same tab. No
+        changes were made.
+    </p>
+    <p>
+        <a class="button-link" href="{% url 'login' %}">Sign in again</a>
+        <a class="button-link" href="{% url 'people:person_list' %}">Return to your journal</a>
+    </p>
+</section>
+{% endblock %}
