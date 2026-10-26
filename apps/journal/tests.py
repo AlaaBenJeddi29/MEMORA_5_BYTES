@@ -30,8 +30,8 @@ def make_media(owner, name='journal-photo.png'):
 
 class JournalEntryModelTests(APITestCase):
     def setUp(self):
-        self.user = User.objects.create_user(username='alice', password='secret')
-        self.other_user = User.objects.create_user(username='bob', password='secret')
+        self.user = User.objects.create_user(username='alice', email='alice@example.com', password='secret')
+        self.other_user = User.objects.create_user(username='bob', email='bob@example.com', password='secret')
 
     def make_entry(self, user=None, title='Morning', text='A quiet morning.', **kwargs):
         return JournalEntry.objects.create(
@@ -125,7 +125,7 @@ class JournalEntryModelTests(APITestCase):
 
 class JournalEntryApiAuthenticationTests(APITestCase):
     def setUp(self):
-        self.user = User.objects.create_user(username='alice', password='secret')
+        self.user = User.objects.create_user(username='alice', email='alice@example.com', password='secret')
         self.entry = JournalEntry.objects.create(
             user=self.user,
             title='Private',
@@ -164,8 +164,8 @@ class JournalEntryApiAuthenticationTests(APITestCase):
 
 class JournalEntryApiCrudTests(APITestCase):
     def setUp(self):
-        self.alice = User.objects.create_user(username='alice', password='secret')
-        self.bob = User.objects.create_user(username='bob', password='secret')
+        self.alice = User.objects.create_user(username='alice', email='alice@example.com', password='secret')
+        self.bob = User.objects.create_user(username='bob', email='bob@example.com', password='secret')
         self.alice_entry = JournalEntry.objects.create(
             user=self.alice,
             title='Alice entry',
@@ -333,8 +333,8 @@ class JournalEntryApiCrudTests(APITestCase):
 
 class JournalSearchPaginationTests(APITestCase):
     def setUp(self):
-        self.alice = User.objects.create_user(username='alice', password='secret')
-        self.bob = User.objects.create_user(username='bob', password='secret')
+        self.alice = User.objects.create_user(username='alice', email='alice@example.com', password='secret')
+        self.bob = User.objects.create_user(username='bob', email='bob@example.com', password='secret')
         self.client.force_login(self.alice)
         self.now = timezone.now()
 

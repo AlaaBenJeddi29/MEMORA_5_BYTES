@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -261,7 +262,7 @@ class ProcessPhotoTests(TestCase):
         self.media_root_override.enable()
         self.addCleanup(self.media_root_override.disable)
 
-        self.user = User.objects.create_user(username='alice', password='secret')
+        self.user = User.objects.create_user(username='alice', email='alice@example.com', password='secret')
         with patch('apps.people.signals.process_photo'):
             self.photo = MediaFile.objects.create(
                 owner=self.user,
@@ -514,7 +515,7 @@ class PeopleIsolationTests(TestCase):
         response = self.client.get(reverse('people:person_list'))
 
         self.assertEqual(response.status_code, 302)
-        self.assertIn('/accounts/login/', response.url)
+        self.assertTrue(response.url.startswith(settings.LOGIN_URL))
 
 
 class PeopleApiTests(TestCase):
@@ -597,8 +598,8 @@ class PeopleApiTests(TestCase):
 
 class PeopleModelTests(TestCase):
     def setUp(self):
-        self.user = User.objects.create_user(username='alice', password='secret')
-        self.other_user = User.objects.create_user(username='bob', password='secret')
+        self.user = User.objects.create_user(username='alice', email='alice@example.com', password='secret')
+        self.other_user = User.objects.create_user(username='bob', email='bob@example.com', password='secret')
         self.person = Person.objects.create(owner=self.user, name='Alice')
         self.photo = create_photo(self.user)
 
@@ -689,7 +690,7 @@ class MediaLifecycleSignalTests(TestCase):
         self.media_root_override.enable()
         self.addCleanup(self.media_root_override.disable)
 
-        self.user = User.objects.create_user(username='alice', password='secret')
+        self.user = User.objects.create_user(username='alice', email='alice@example.com', password='secret')
 
     def upload(self, name='photo.png'):
         with patch('apps.people.signals.process_photo'):
@@ -793,8 +794,8 @@ class MediaLifecycleSignalTests(TestCase):
 
 class PeopleApiCrudTests(APITestCase):
     def setUp(self):
-        self.user = User.objects.create_user(username='alice', password='secret')
-        self.other_user = User.objects.create_user(username='bob', password='secret')
+        self.user = User.objects.create_user(username='alice', email='alice@example.com', password='secret')
+        self.other_user = User.objects.create_user(username='bob', email='bob@example.com', password='secret')
 
         self.person = Person.objects.create(owner=self.user, name='Alice')
         self.other_person = Person.objects.create(owner=self.other_user, name='Bob')
@@ -1107,8 +1108,8 @@ class PeopleHtmlViewTests(TestCase):
         self.media_root_override.enable()
         self.addCleanup(self.media_root_override.disable)
 
-        self.user = User.objects.create_user(username='alice', password='secret')
-        self.other_user = User.objects.create_user(username='bob', password='secret')
+        self.user = User.objects.create_user(username='alice', email='alice@example.com', password='secret')
+        self.other_user = User.objects.create_user(username='bob', email='bob@example.com', password='secret')
         self.person = Person.objects.create(owner=self.user, name='Alice')
         self.other_person = Person.objects.create(owner=self.other_user, name='Bob')
         self.photo = create_photo(self.user, 'alice.png')
@@ -1312,4 +1313,4 @@ class PeopleHtmlViewTests(TestCase):
             with self.subTest(method=method, url=url):
                 response = getattr(self.client, method)(url)
                 self.assertEqual(response.status_code, 302)
-                self.assertIn('/admin/login/', response.url)
+                self.assertTrue(response.url.startswith(settings.LOGIN_URL))
