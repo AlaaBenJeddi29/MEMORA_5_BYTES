@@ -24,3 +24,29 @@ export interface SummaryInput {
 export interface GenerateSummaryInput {
   journal_entry_id: number
 }
+
+/** Fields the backend checks when ranking a search hit. */
+export type SummarySearchField = 'themes' | 'summary_text' | 'mood'
+
+/** One scored result from GET /api/summaries/search/. */
+export interface SummarySearchHit {
+  summary: Summary
+  score: number
+  matched_fields: SummarySearchField[]
+  matched_terms: string[]
+  snippet: string
+}
+
+/** PageNumberPagination envelope returned by the summaries search endpoint. */
+export interface SummarySearchPage {
+  count: number
+  next: string | null
+  previous: string | null
+  results: SummarySearchHit[]
+}
+
+export interface SummarySearchParams {
+  q: string
+  page?: number
+  page_size?: number
+}

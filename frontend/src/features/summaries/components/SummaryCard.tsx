@@ -5,16 +5,28 @@ import { formatDateTime } from '../../../utils/format'
 
 export interface SummaryCardProps {
   summary: Summary
+  /** Search excerpt from the API; falls back to the summary text when empty. */
+  snippet?: string
   onView: (summary: Summary) => void
   onEdit: (summary: Summary) => void
   onDelete: (summary: Summary) => void
+  /** Optional shortcut to this memory's page in the memory book. */
+  onOpenInBook?: (summary: Summary) => void
 }
 
-export function SummaryCard({ summary, onView, onEdit, onDelete }: SummaryCardProps) {
+export function SummaryCard({
+  summary,
+  snippet,
+  onView,
+  onEdit,
+  onDelete,
+  onOpenInBook,
+}: SummaryCardProps) {
   const title =
     summary.journal_entry_id === null
       ? `Summary #${summary.id}`
       : `Summary for journal entry #${summary.journal_entry_id}`
+  const excerpt = snippet?.trim() ? snippet : summary.summary_text
 
   return (
     <li className="reflection-card">
@@ -35,10 +47,7 @@ export function SummaryCard({ summary, onView, onEdit, onDelete }: SummaryCardPr
 
       <h3 className="reflection-card__title">{title}</h3>
 
-      <blockquote className="reflection-card__excerpt">
-        <Icon name="quote" size={18} />
-        <p>{summary.summary_text}</p>
-      </blockquote>
+      <p className="summary-card__excerpt">{excerpt}</p>
 
       {summary.themes.length > 0 && (
         <ul className="tag-list" aria-label={`Themes for summary ${summary.id}`}>
@@ -50,47 +59,42 @@ export function SummaryCard({ summary, onView, onEdit, onDelete }: SummaryCardPr
         </ul>
       )}
 
-      <div className="reflection-card__foot">
-        {summary.journal_entry_id !== null && (
-          <a
-            className="reflection-card__source"
-            href={`/app/journal?edit=${summary.journal_entry_id}`}
-          >
-            Open entry #{summary.journal_entry_id}
-            <Icon name="arrowUpRight" size={13} />
-          </a>
-        )}
-
-        <div className="reflection-card__actions">
+      <div className="summary-card__actions">
+        {onOpenInBook && (
           <Button
             variant="secondary"
             size="sm"
-            aria-label={`View summary ${summary.id}`}
-            onClick={() => onView(summary)}
+            data-book-trigger={summary.id}
+            aria-label={`Read summary ${summary.id} in the book`}
+            onClick={() => onOpenInBook(summary)}
           >
-            <Icon name="eye" size={14} />
-            View
+            Read in book
           </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-label={`Edit summary ${summary.id}`}
-            onClick={() => onEdit(summary)}
-          >
-            <Icon name="edit" size={14} />
-            Edit
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="reflection-card__delete"
-            aria-label={`Delete summary ${summary.id}`}
-            onClick={() => onDelete(summary)}
-          >
-            <Icon name="trash" size={14} />
-            Delete
-          </Button>
-        </div>
+        )}
+        <Button
+          variant="secondary"
+          size="sm"
+          aria-label={`View summary ${summary.id}`}
+          onClick={() => onView(summary)}
+        >
+          View
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          aria-label={`Edit summary ${summary.id}`}
+          onClick={() => onEdit(summary)}
+        >
+          Edit
+        </Button>
+        <Button
+          variant="danger"
+          size="sm"
+          aria-label={`Delete summary ${summary.id}`}
+          onClick={() => onDelete(summary)}
+        >
+          Delete
+        </Button>
       </div>
     </li>
   )

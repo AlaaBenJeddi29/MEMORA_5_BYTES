@@ -1,4 +1,4 @@
-import type { JournalEntry, JournalEntryInput, JournalPage, JournalSearchParams } from '../types/journal'
+import type { JournalEntry, JournalEntryInput, JournalPage, JournalSearchParams, AdvancedSearchParams, AdvancedSearchResult } from '../types/journal'
 import { apiRequest } from './apiClient'
 
 const BASE = '/api/journal/entries/'
@@ -51,6 +51,8 @@ export const journalApi = {
   search: (params: JournalSearchParams) =>
     apiRequest<JournalPage>(buildSearchUrl(params)),
 
-  /** Real Module 1 entries for the summaries generation picker. */
   listAll: listAllEntries,
+
+  advancedSearch: (params: AdvancedSearchParams) =>
+    apiRequest<AdvancedSearchResult>(`${BASE}advanced-search/`, { method: 'POST', body: params }),
 }

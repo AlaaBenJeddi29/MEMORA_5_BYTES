@@ -113,8 +113,10 @@ overridable with `?page_size=`, max 100). The envelope is
 ```
 
 > `settings.REST_FRAMEWORK` still has no `DEFAULT_PAGINATION_CLASS`; Journal sets
-> `pagination_class` on its viewset. Audio, Summaries, and Media lists return a
-> bare array. A shared pagination default remains a team decision (§4.5).
+> `pagination_class` on its viewset. Summaries search uses the same
+> `PageNumberPagination` envelope (`page_size = 20`, max 50 through
+> `?page_size=`). Audio, Summaries list, and Media lists return a bare array.
+> A shared pagination default remains a team decision (§4.5).
 
 ### 1.7 Error format **[convention — matches DRF]**
 
@@ -468,10 +470,46 @@ their own message; none of them is ever replaced by a fake transcript.
 | Method | Path | Auth | Notes |
 | --- | --- | --- | --- |
 | `GET` | `/api/summaries/` | Required | Caller's summaries only |
+| `GET` | `/api/summaries/search/` | Required | Local concept search over the caller's summaries |
 | `POST` | `/api/summaries/` | Required | Manual create; owner from session; optional owned `journal_entry_id` |
 | `PATCH` | `/api/summaries/{id}/` | Required | 404 if not owner; entry must be owned |
 | `DELETE` | `/api/summaries/{id}/` | Required | 404 if not owner |
 | `POST` | `/api/summaries/generate/` | Required | Body `{"journal_entry_id": 12}` |
+
+Search accepts `q` (required, 2–200 characters after trimming) plus the
+standard page parameters (`page`, `page_size`; 20 per page, max 50). The owner
+filter is applied in the ORM before ranking, and the client cannot supply a
+user identifier. Ranking is local and lexical: accents/case are normalized,
+French and English stopwords are removed, and a small bilingual concept
+lexicon bridges French queries and English summaries. Matches in `themes`
+weigh more than `summary_text`, which weighs more than `mood`; `created_at` is
+only a tie-breaker. The endpoint never writes data and never calls Gemini.
+
+The response uses the standard pagination envelope. Each result contains the
+full summary under `summary`, plus `score`, `matched_fields`
+(`themes`/`summary_text`/`mood`), `matched_terms`, and a plain-text `snippet`:
+
+```json
+{
+  "count": 1,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "summary": { "id": 12, "summary_text": "…", "mood": "proud", "themes": ["achievement"] },
+      "score": 7.5,
+      "matched_fields": ["themes", "summary_text"],
+      "matched_terms": ["achievement", "proud"],
+      "snippet": "…a real sense of achievement."
+    }
+  ]
+}
+```
+
+Missing, blank, punctuation-only, stopword-only, or overlong `q` values return
+`400` with a `q` field error. No match returns `200` with `count: 0` and an
+empty `results` list. `illustration_prompt`, the linked journal entry's text,
+and other users' summaries are never searched.
 
 The response shape does not include the source journal text. Fields: `id`,
 `owner`, `journal_entry_id`, `summary_text`, `mood`, `themes`,
@@ -718,3 +756,4 @@ Fields (proposal): `id`, `name`, `notes`, `created_at`.
 | 2026-10-24 | §3.5: implement detail/update/delete with post-commit file cleanup and `prompt`-only updates | Module 4 |
 | 2026-10-25 | §3.4–3.5: remove the mock journal fixture; integrate real Module 1 entries and Module 3 summaries, prompt precedence, provenance fields, and owner-scoped validation | Module 4 |
 | 2026-10-25 | Merge reconciliation: restore one implemented-endpoints table, document the real Journal fields and search, mark implemented module sections, and correct pagination/CSRF notes | Merge resolution |
+| 2026-10-26 | Add owner-scoped local concept search for summaries (`GET /api/summaries/search/`) with standard pagination, bilingual lexicon, relevance scores, and snippets | Module 3 |

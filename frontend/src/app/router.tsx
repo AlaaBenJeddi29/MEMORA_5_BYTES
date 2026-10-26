@@ -16,6 +16,7 @@ import { LoginPage } from '../features/auth/pages/LoginPage'
 import { RegisterPage } from '../features/auth/pages/RegisterPage'
 import { DashboardPage } from '../features/dashboard/pages/DashboardPage'
 import { JournalListPage } from '../features/journal/pages/JournalListPage'
+import { AdvancedSearchPage } from '../features/journal/pages/AdvancedSearchPage'
 import { MediaLibraryPage } from '../features/media-library/pages/MediaLibraryPage'
 import { MyPhotosPage } from '../features/people/pages/MyPhotosPage'
 import { PeoplePage } from '../features/people/pages/PeoplePage'
@@ -66,6 +67,7 @@ const router = createBrowserRouter(
               children: [
                 { path: 'app', element: <DashboardPage /> },
                 { path: 'app/journal', element: <JournalListPage /> },
+                { path: 'app/journal/search', element: <AdvancedSearchPage /> },
                 { path: 'app/audio', element: <AudioListPage /> },
                 { path: 'app/summaries', element: <SummariesPage /> },
                 { path: 'app/media', element: <MediaLibraryPage /> },
