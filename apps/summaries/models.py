@@ -7,6 +7,30 @@ from django.db import models
 MAX_THEMES = 8
 MAX_THEME_LENGTH = 64
 
+COVER_STYLE_CHOICES = (
+    ("classic", "Classic"),
+    ("nature", "Nature"),
+    ("minimal", "Minimal"),
+    ("travel", "Travel"),
+    ("memories", "Memories"),
+    ("night", "Starry night"),
+)
+
+BOOK_THEME_CHOICES = (
+    ("paper", "Classic paper"),
+    ("nature", "Soothing nature"),
+    ("ocean", "Ocean"),
+    ("blush", "Powder rose"),
+    ("night", "Night"),
+    ("minimal", "Minimal"),
+)
+
+FONT_STYLE_CHOICES = (
+    ("editorial", "Editorial"),
+    ("modern", "Modern"),
+    ("handwritten", "Handwritten"),
+)
+
 
 def validate_themes(value):
     """Validate the JSON list stored in ``Summary.themes``.
@@ -73,3 +97,40 @@ class Summary(models.Model):
         if self.journal_entry_id is not None:
             return f"Summary for journal entry {self.journal_entry_id}"
         return f"Summary #{self.pk}"
+
+
+class BookPreference(models.Model):
+    """Per-user visual customization of the memory book.
+
+    Only stable style identifiers are stored. The actual colors, patterns, and
+    typography live in the frontend theme module, never in the database.
+    """
+
+    owner = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="book_preference",
+    )
+    cover_style = models.CharField(
+        max_length=32,
+        choices=COVER_STYLE_CHOICES,
+        default="classic",
+    )
+    theme_id = models.CharField(
+        max_length=32,
+        choices=BOOK_THEME_CHOICES,
+        default="paper",
+    )
+    font_style = models.CharField(
+        max_length=32,
+        choices=FONT_STYLE_CHOICES,
+        default="editorial",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "book preference"
+        verbose_name_plural = "book preferences"
+
+    def __str__(self):
+        return f"Book preferences for {self.owner}"

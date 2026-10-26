@@ -16,9 +16,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .journal_provider import JournalEntryNotFound, journal_provider
-from .models import Summary
+from .models import BookPreference, Summary
 from .search import EmptySearchQuery, search_user_summaries
 from .serializers import (
+    BookPreferenceSerializer,
     GenerateSummarySerializer,
     SummarySearchHitSerializer,
     SummarySearchQuerySerializer,
@@ -97,6 +98,44 @@ class SummarySearchView(APIView):
 
         serializer = SummarySearchHitSerializer(page, many=True)
         return paginator.get_paginated_response(serializer.data)
+
+
+class BookPreferenceView(APIView):
+    """Read, update, or reset the caller's memory-book customization.
+
+    The endpoint has no user identifier: every lookup and write is bound to
+    ``request.user``. Reading before the first save returns model defaults
+    without creating a row; the row is created on the first successful save.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        preference = BookPreference.objects.filter(owner=request.user).first()
+        if preference is None:
+            preference = BookPreference(owner=request.user)
+        return Response(BookPreferenceSerializer(preference).data)
+
+    def put(self, request):
+        return self._save(request, partial=False)
+
+    def patch(self, request):
+        return self._save(request, partial=True)
+
+    def delete(self, request):
+        BookPreference.objects.filter(owner=request.user).delete()
+        return Response(BookPreferenceSerializer(BookPreference(owner=request.user)).data)
+
+    def _save(self, request, partial):
+        preference = BookPreference.objects.filter(owner=request.user).first()
+        serializer = BookPreferenceSerializer(
+            preference or BookPreference(owner=request.user),
+            data=request.data,
+            partial=partial,
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save(owner=request.user)
+        return Response(serializer.data)
 
 
 class SummaryDetailView(APIView):

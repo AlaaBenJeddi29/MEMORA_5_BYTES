@@ -8,13 +8,17 @@ import { PageHeader } from '../../../components/PageHeader'
 import { useDocumentTitle } from '../../../hooks/useDocumentTitle'
 import { normalizeApiError, type NormalizedErrors } from '../../../services/errors'
 import { SUMMARY_SEARCH_PAGE_SIZE, summariesApi } from '../../../services/summaries'
+import type { BookPreferences } from '../../../types/bookPreferences'
 import type { Summary, SummarySearchPage } from '../../../types/summaries'
+import { BookCustomizationDialog } from '../components/BookCustomizationDialog'
 import { DeleteSummaryDialog } from '../components/DeleteSummaryDialog'
 import { GenerateSummaryDialog } from '../components/GenerateSummaryDialog'
+import { MemoryBook } from '../components/MemoryBook'
 import { SummaryCard } from '../components/SummaryCard'
 import { SummaryDetailDialog } from '../components/SummaryDetailDialog'
 import { SummaryFormDialog } from '../components/SummaryFormDialog'
 import { SummarySearchBar } from '../components/SummarySearchBar'
+import { useBookPreferences } from '../useBookPreferences'
 
 type ActiveDialog =
   | { kind: 'detail'; summary: Summary }
@@ -22,10 +26,12 @@ type ActiveDialog =
   | { kind: 'delete'; summary: Summary }
   | { kind: 'create' }
   | { kind: 'generate' }
+  | { kind: 'customize' }
   | null
 
 type LoadStatus = 'loading' | 'ready' | 'error'
 type SearchStatus = 'idle' | 'loading' | 'ready' | 'error'
+type PageView = 'list' | 'book'
 
 function messagesOf(errors: NormalizedErrors | null): string[] {
   if (!errors) {
@@ -48,7 +54,18 @@ function searchMessagesOf(errors: NormalizedErrors | null): string[] {
 }
 
 export function SummariesPage() {
-  useDocumentTitle('Summaries · MEMORA')
+  const [view, setView] = useState<PageView>('list')
+  const [bookStartId, setBookStartId] = useState<number | null>(null)
+  const [returnFocusId, setReturnFocusId] = useState<number | null>(null)
+  const restoreFocusRef = useRef(false)
+
+  useDocumentTitle(view === 'book' ? 'My Story · MEMORA' : 'Summaries · MEMORA')
+
+  const {
+    preferences,
+    status: preferencesStatus,
+    apply: applyPreferences,
+  } = useBookPreferences()
 
   const [summaries, setSummaries] = useState<Summary[]>([])
   const [status, setStatus] = useState<LoadStatus>('loading')
@@ -174,6 +191,38 @@ export function SummariesPage() {
     }
   }
 
+  function openBook(startId: number | null) {
+    setBookStartId(startId)
+    setReturnFocusId(startId)
+    setView('book')
+  }
+
+  function closeBook() {
+    restoreFocusRef.current = true
+    setView('list')
+  }
+
+  function handlePreferencesSaved(next: BookPreferences) {
+    applyPreferences(next)
+    setDialog(null)
+    setNotice('Personnalisation enregistrée.')
+  }
+
+  useEffect(() => {
+    if (view !== 'list' || !restoreFocusRef.current) {
+      return
+    }
+    restoreFocusRef.current = false
+    const trigger =
+      returnFocusId === null
+        ? null
+        : document.querySelector<HTMLElement>(
+            `[data-book-trigger="${returnFocusId}"]`,
+          )
+    const target = trigger ?? document.getElementById('open-memory-book')
+    target?.focus()
+  }, [view, returnFocusId])
+
   const searchActive = activeSearchQuery.length > 0
   const searchResults = searchData?.results ?? []
   const searchCount = searchData?.count ?? 0
@@ -184,6 +233,27 @@ export function SummariesPage() {
   const currentSearchPage = Math.min(searchPage, totalSearchPages)
   const searchErrorMessages = searchMessagesOf(searchErrors)
 
+  if (view === 'book') {
+    return (
+      <>
+        <MemoryBook
+          summaries={summaries}
+          onClose={closeBook}
+          initialSummaryId={bookStartId}
+          preferences={preferences}
+          onCustomize={() => openDialog({ kind: 'customize' })}
+        />
+        {dialog?.kind === 'customize' && (
+          <BookCustomizationDialog
+            preferences={preferences}
+            onClose={closeDialog}
+            onSaved={handlePreferencesSaved}
+          />
+        )}
+      </>
+    )
+  }
+
   return (
     <>
       <PageHeader
@@ -191,6 +261,14 @@ export function SummariesPage() {
         description="AI-generated recaps of your journal entries. Generation runs on the server; editing and deleting never contact the model."
         actions={
           <>
+            <Button
+              id="open-memory-book"
+              variant="secondary"
+              disabled={status !== 'ready' || preferencesStatus === 'loading'}
+              onClick={() => openBook(null)}
+            >
+              Open memory book
+            </Button>
             <Button variant="secondary" onClick={() => openDialog({ kind: 'create' })}>
               New summary
             </Button>
@@ -296,6 +374,7 @@ export function SummariesPage() {
                       onView={(item) => openDialog({ kind: 'detail', summary: item })}
                       onEdit={(item) => openDialog({ kind: 'edit', summary: item })}
                       onDelete={(item) => openDialog({ kind: 'delete', summary: item })}
+                      onOpenInBook={(item) => openBook(item.id)}
                     />
                   ))}
                 </ul>

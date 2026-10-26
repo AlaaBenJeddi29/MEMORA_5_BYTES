@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { jsonResponse } from '../../../test/fakeResponse'
@@ -8,6 +8,7 @@ import type {
   SummarySearchHit,
   SummarySearchPage,
 } from '../../../types/summaries'
+import { DEFAULT_BOOK_PREFERENCES } from '../bookThemes'
 import { SummariesPage } from './SummariesPage'
 
 const SUMMARY: Summary = {
@@ -45,6 +46,7 @@ const JOURNAL_PAGE: JournalPage = {
 
 const JOURNAL_PICKER_URL = '/api/journal/entries/?page=1&page_size=100'
 const SEARCH_PATH = '/api/summaries/search/'
+const PREFERENCES_PATH = '/api/summaries/book-preferences/'
 const SEARCH_LABEL = /Recherche dans vos souvenirs/i
 
 interface FetchCall {
@@ -52,10 +54,26 @@ interface FetchCall {
   init: RequestInit
 }
 
-function installFetch(handler: (call: FetchCall) => Response | Promise<Response>) {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) =>
-    handler({ url: String(input), init: init ?? {} }),
-  )
+interface FetchOptions {
+  /** Serve the default saved preferences unless the test opts out. */
+  servePreferences?: boolean
+}
+
+function installFetch(
+  handler: (call: FetchCall) => Response | Promise<Response>,
+  { servePreferences = true }: FetchOptions = {},
+) {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const call = { url: String(input), init: init ?? {} }
+    if (
+      servePreferences &&
+      call.url.endsWith(PREFERENCES_PATH) &&
+      (call.init.method ?? 'GET') === 'GET'
+    ) {
+      return jsonResponse(DEFAULT_BOOK_PREFERENCES)
+    }
+    return handler(call)
+  })
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock
 }
@@ -881,5 +899,284 @@ describe('SummariesPage search', () => {
 
     const patch = callsOf(fetchMock).find((call) => call.init.method === 'PATCH')
     expect(patch?.url).toMatch(/\/api\/summaries\/71\/$/)
+  })
+})
+
+describe('SummariesPage memory book', () => {
+  it('opens the book from the loaded summaries without another request', async () => {
+    let listCalls = 0
+    installFetch(({ url, init }) => {
+      const method = init.method ?? 'GET'
+      if (url.endsWith('/api/summaries/') && method === 'GET') {
+        listCalls += 1
+        return jsonResponse([SUMMARY])
+      }
+      throw new Error(`Unexpected request: ${method} ${url}`)
+    })
+
+    render(<SummariesPage />)
+    await screen.findByText(SUMMARY.summary_text)
+
+    const openButton = screen.getByRole('button', {
+      name: 'Open memory book',
+    }) as HTMLButtonElement
+    expect(openButton.disabled).toBe(false)
+
+    fireEvent.click(openButton)
+
+    expect(screen.getByRole('region', { name: 'Memory book' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'My Story' })).toBeTruthy()
+    expect(screen.getByText('1 memory')).toBeTruthy()
+    expect(document.title).toBe('My Story · MEMORA')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open my book' }))
+
+    expect(screen.getByText(SUMMARY.summary_text)).toBeTruthy()
+    expect(screen.getByText('Page 1 of 1')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close book' }))
+
+    expect(screen.getByRole('heading', { name: 'Summaries' })).toBeTruthy()
+    expect(document.title).toBe('Summaries · MEMORA')
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Open memory book' }),
+    )
+    expect(listCalls).toBe(1)
+  })
+
+  it('opens a search result at its page and restores focus when closed', async () => {
+    const later: Summary = {
+      ...SUMMARY,
+      id: 12,
+      journal_entry_id: null,
+      summary_text: 'A later proud memory.',
+      created_at: '2026-11-02T10:00:00Z',
+    }
+    const hit = searchHitOf(
+      { ...later },
+      { snippet: 'A later proud memory.' },
+    )
+    let listCalls = 0
+    let searchCalls = 0
+
+    installFetch(({ url, init }) => {
+      const method = init.method ?? 'GET'
+      if (url.endsWith('/api/summaries/') && method === 'GET') {
+        listCalls += 1
+        return jsonResponse([SUMMARY, later])
+      }
+      if (isSearchCall({ url, init })) {
+        searchCalls += 1
+        return jsonResponse(searchPageOf([hit]))
+      }
+      throw new Error(`Unexpected request: ${method} ${url}`)
+    })
+
+    render(<SummariesPage />)
+    await screen.findByText(SUMMARY.summary_text)
+
+    fireEvent.change(screen.getByLabelText(SEARCH_LABEL), {
+      target: { value: 'fierté' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Rechercher' }))
+    await screen.findByText('A later proud memory.')
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Read summary 12 in the book' }),
+    )
+
+    expect(screen.getByRole('region', { name: 'Memory book' })).toBeTruthy()
+    expect(screen.getByText('Page 2 of 2')).toBeTruthy()
+    expect(screen.getByText(later.summary_text)).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close book' }))
+
+    expect(
+      screen.getByRole('heading', { name: 'Résultats de recherche' }),
+    ).toBeTruthy()
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Read summary 12 in the book' }),
+    )
+    expect(listCalls).toBe(1)
+    expect(searchCalls).toBe(1)
+  })
+
+  it('shows the empty cover when there are no memories and can return', async () => {
+    installFetch(({ url }) => {
+      if (url.endsWith('/api/summaries/')) {
+        return jsonResponse([])
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    render(<SummariesPage />)
+    await screen.findByText('No summaries yet')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open memory book' }))
+
+    expect(screen.getByText('Your book is waiting.')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Open my book' })).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back to summaries' }))
+
+    expect(screen.getByText('No summaries yet')).toBeTruthy()
+  })
+
+  it('keeps the book unavailable while loading or after a load failure', async () => {
+    installFetch(({ url }) => {
+      if (url.endsWith('/api/summaries/')) {
+        throw new TypeError('Failed to fetch')
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    render(<SummariesPage />)
+
+    expect(
+      (screen.getByRole('button', { name: 'Open memory book' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true)
+
+    await screen.findByText(
+      'We couldn’t reach the server. Check your connection and try again.',
+    )
+
+    expect(
+      (screen.getByRole('button', { name: 'Open memory book' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true)
+    expect(screen.queryByRole('region', { name: 'Memory book' })).toBeNull()
+  })
+
+  it('applies the saved customization to the book', async () => {
+    installFetch(
+      ({ url, init }) => {
+        const method = init.method ?? 'GET'
+        if (url.endsWith('/api/summaries/') && method === 'GET') {
+          return jsonResponse([SUMMARY])
+        }
+        if (url.endsWith(PREFERENCES_PATH) && method === 'GET') {
+          return jsonResponse({
+            cover_style: 'night',
+            theme_id: 'ocean',
+            font_style: 'modern',
+          })
+        }
+        throw new Error(`Unexpected request: ${method} ${url}`)
+      },
+      { servePreferences: false },
+    )
+
+    render(<SummariesPage />)
+    await screen.findByText(SUMMARY.summary_text)
+
+    const openButton = screen.getByRole('button', {
+      name: 'Open memory book',
+    }) as HTMLButtonElement
+    await waitFor(() => expect(openButton.disabled).toBe(false))
+    fireEvent.click(openButton)
+
+    const book = screen.getByRole('region', { name: 'Memory book' })
+    expect(book.classList.contains('book-theme--ocean')).toBe(true)
+    expect(book.classList.contains('book-font--modern')).toBe(true)
+    expect(book.classList.contains('book-cover-style--night')).toBe(true)
+  })
+
+  it('previews and saves a customization without reloading the book', async () => {
+    let listCalls = 0
+    const saved = {
+      cover_style: 'night',
+      theme_id: 'ocean',
+      font_style: 'modern',
+    }
+
+    const fetchMock = installFetch(({ url, init }) => {
+      const method = init.method ?? 'GET'
+      if (url.endsWith('/api/summaries/') && method === 'GET') {
+        listCalls += 1
+        return jsonResponse([SUMMARY])
+      }
+      if (url.endsWith(PREFERENCES_PATH) && method === 'PUT') {
+        return jsonResponse(JSON.parse(String(init.body)))
+      }
+      throw new Error(`Unexpected request: ${method} ${url}`)
+    })
+
+    render(<SummariesPage />)
+    await screen.findByText(SUMMARY.summary_text)
+
+    const openButton = screen.getByRole('button', {
+      name: 'Open memory book',
+    }) as HTMLButtonElement
+    await waitFor(() => expect(openButton.disabled).toBe(false))
+    fireEvent.click(openButton)
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Personnaliser mon livre' }),
+    )
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Personnaliser mon livre',
+    })
+
+    fireEvent.click(within(dialog).getByRole('radio', { name: 'Nuit étoilée' }))
+    fireEvent.click(within(dialog).getByRole('radio', { name: 'Océan' }))
+    fireEvent.click(within(dialog).getByRole('radio', { name: 'Contemporain' }))
+
+    const preview = within(dialog).getByRole('img', { name: /Aperçu/ })
+    expect(preview.classList.contains('book-cover-style--night')).toBe(true)
+    expect(preview.classList.contains('book-theme--ocean')).toBe(true)
+    expect(preview.classList.contains('book-font--modern')).toBe(true)
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Enregistrer' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+
+    const book = screen.getByRole('region', { name: 'Memory book' })
+    expect(book.classList.contains('book-cover-style--night')).toBe(true)
+    expect(book.classList.contains('book-theme--ocean')).toBe(true)
+    expect(book.classList.contains('book-font--modern')).toBe(true)
+    expect(screen.getByRole('heading', { name: 'My Story' })).toBeTruthy()
+
+    const put = callsOf(fetchMock).find((call) => call.init.method === 'PUT')
+    expect(put?.url).toMatch(/\/book-preferences\/$/)
+    expect(jsonBody(put)).toEqual(saved)
+    expect(listCalls).toBe(1)
+  })
+
+  it('discards unsaved customization when cancelled', async () => {
+    const fetchMock = installFetch(({ url, init }) => {
+      const method = init.method ?? 'GET'
+      if (url.endsWith('/api/summaries/') && method === 'GET') {
+        return jsonResponse([SUMMARY])
+      }
+      throw new Error(`Unexpected request: ${method} ${url}`)
+    })
+
+    render(<SummariesPage />)
+    await screen.findByText(SUMMARY.summary_text)
+
+    const openButton = screen.getByRole('button', {
+      name: 'Open memory book',
+    }) as HTMLButtonElement
+    await waitFor(() => expect(openButton.disabled).toBe(false))
+    fireEvent.click(openButton)
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Personnaliser mon livre' }),
+    )
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Personnaliser mon livre',
+    })
+    fireEvent.click(within(dialog).getByRole('radio', { name: 'Nuit' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Annuler' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+
+    const book = screen.getByRole('region', { name: 'Memory book' })
+    expect(book.classList.contains('book-theme--night')).toBe(false)
+    expect(book.classList.contains('book-theme--paper')).toBe(true)
+    expect(callsOf(fetchMock).some((call) => call.init.method === 'PUT')).toBe(
+      false,
+    )
   })
 })

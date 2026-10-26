@@ -9,9 +9,18 @@ export interface SummaryCardProps {
   onView: (summary: Summary) => void
   onEdit: (summary: Summary) => void
   onDelete: (summary: Summary) => void
+  /** Optional shortcut to this memory's page in the memory book. */
+  onOpenInBook?: (summary: Summary) => void
 }
 
-export function SummaryCard({ summary, snippet, onView, onEdit, onDelete }: SummaryCardProps) {
+export function SummaryCard({
+  summary,
+  snippet,
+  onView,
+  onEdit,
+  onDelete,
+  onOpenInBook,
+}: SummaryCardProps) {
   const title =
     summary.journal_entry_id === null
       ? `Summary #${summary.id}`
@@ -42,6 +51,17 @@ export function SummaryCard({ summary, snippet, onView, onEdit, onDelete }: Summ
       )}
 
       <div className="summary-card__actions">
+        {onOpenInBook && (
+          <Button
+            variant="secondary"
+            size="sm"
+            data-book-trigger={summary.id}
+            aria-label={`Read summary ${summary.id} in the book`}
+            onClick={() => onOpenInBook(summary)}
+          >
+            Read in book
+          </Button>
+        )}
         <Button
           variant="secondary"
           size="sm"
