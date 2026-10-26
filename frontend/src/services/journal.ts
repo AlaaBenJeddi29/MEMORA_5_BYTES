@@ -51,6 +51,8 @@ export const journalApi = {
   search: (params: JournalSearchParams) =>
     apiRequest<JournalPage>(buildSearchUrl(params)),
 
+  listAll: listAllEntries,
+
   advancedSearch: (params: AdvancedSearchParams) =>
     apiRequest<AdvancedSearchResult>(`${BASE}advanced-search/`, { method: 'POST', body: params }),
 }
