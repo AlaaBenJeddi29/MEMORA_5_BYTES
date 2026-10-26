@@ -20,6 +20,7 @@ import { SummaryDetailDialog } from '../components/SummaryDetailDialog'
 import { SummaryFormDialog } from '../components/SummaryFormDialog'
 import { SummarySearchBar } from '../components/SummarySearchBar'
 import { useBookPreferences } from '../useBookPreferences'
+import '../summaries.css'
 
 type ActiveDialog =
   | { kind: 'detail'; summary: Summary }
@@ -74,6 +75,9 @@ export function SummariesPage() {
   const [loadErrors, setLoadErrors] = useState<NormalizedErrors | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [dialog, setDialog] = useState<ActiveDialog>(null)
+  const [highlightedSummaryId, setHighlightedSummaryId] = useState<number | null>(
+    null,
+  )
 
   const [searchQuery, setSearchQuery] = useState('')
   const [activeSearchQuery, setActiveSearchQuery] = useState('')
@@ -192,7 +196,26 @@ export function SummariesPage() {
     }
   }
 
+  /**
+   * Generation is slow, so the created summary is inserted from the POST
+   * response instead of waiting for the refresh. If that refresh fails, the
+   * card stays visible and the user gets the usual retry notice.
+   */
+  function handleGenerated(summary: Summary) {
+    setDialog(null)
+    setNotice('Summary generated.')
+    clearSearch()
+    setSummaries((current) => [
+      summary,
+      ...current.filter((item) => item.id !== summary.id),
+    ])
+    setStatus('ready')
+    setHighlightedSummaryId(summary.id)
+    void loadSummaries('refresh')
+  }
+
   function openBook(startId: number | null) {
+    setHighlightedSummaryId(null)
     setBookStartId(startId)
     setReturnFocusId(startId)
     setView('book')
@@ -223,6 +246,26 @@ export function SummariesPage() {
     const target = trigger ?? document.getElementById('open-memory-book')
     target?.focus()
   }, [view, returnFocusId])
+
+  // Bring the freshly generated card into view, then fade the highlight out.
+  useEffect(() => {
+    if (view !== 'list' || highlightedSummaryId === null) {
+      return
+    }
+    const card = document.querySelector<HTMLElement>(
+      `[data-summary-card="${highlightedSummaryId}"]`,
+    )
+    const reduceMotion =
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    card?.scrollIntoView?.({
+      block: 'nearest',
+      behavior: reduceMotion ? 'auto' : 'smooth',
+    })
+    card?.focus({ preventScroll: true })
+    const timer = window.setTimeout(() => setHighlightedSummaryId(null), 6000)
+    return () => window.clearTimeout(timer)
+  }, [view, highlightedSummaryId])
 
   const searchActive = activeSearchQuery.length > 0
   const searchResults = searchData?.results ?? []
@@ -472,9 +515,11 @@ export function SummariesPage() {
                       <SummaryCard
                         key={summary.id}
                         summary={summary}
+                        highlighted={summary.id === highlightedSummaryId}
                         onView={(item) => openDialog({ kind: 'detail', summary: item })}
                         onEdit={(item) => openDialog({ kind: 'edit', summary: item })}
                         onDelete={(item) => openDialog({ kind: 'delete', summary: item })}
+                        onOpenInBook={(item) => openBook(item.id)}
                       />
                     ))}
                   </ul>
@@ -517,7 +562,7 @@ export function SummariesPage() {
       {dialog?.kind === 'generate' && (
         <GenerateSummaryDialog
           onClose={closeDialog}
-          onGenerated={() => completeMutation('Summary generated.')}
+          onGenerated={handleGenerated}
         />
       )}
     </div>

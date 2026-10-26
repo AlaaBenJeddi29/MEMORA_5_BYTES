@@ -21,20 +21,6 @@ if GROQ_AVAILABLE:
         logger.warning(f"❌ Groq initialization warning: {e}")
         GROQ_AVAILABLE = False
 
-# Gemini API Key (fallback)
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-GEMINI_AVAILABLE = bool(GEMINI_API_KEY)
-
-if GEMINI_AVAILABLE:
-    try:
-        import google.generativeai as genai
-        genai.configure(api_key=GEMINI_API_KEY)
-        GEMINI_MODEL = "gemini-3.8-flash"
-        logger.info("✅ Gemini API configured successfully")
-    except Exception as e:
-        logger.warning(f"❌ Gemini initialization warning: {e}")
-        GEMINI_AVAILABLE = False
-
 
 class GeminiError(Exception):
     """Raised when AI API call fails."""

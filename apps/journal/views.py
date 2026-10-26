@@ -9,7 +9,12 @@ from rest_framework.viewsets import ModelViewSet
 
 from .models import JournalEntry
 from .search_service import AdvancedSearchService
-from .serializers import AdvancedSearchResultSerializer, JournalEntrySerializer
+from .serializers import (
+    AdvancedSearchQuerySerializer,
+    AdvancedSearchResultSerializer,
+    JournalEntrySerializer,
+    JournalSearchQuerySerializer,
+)
 
 
 class JournalPagination(pagination.PageNumberPagination):
@@ -60,14 +65,20 @@ class JournalEntryViewSet(ModelViewSet):
         """
         queryset = self.get_queryset()
 
+        query_serializer = JournalSearchQuerySerializer(
+            data=request.query_params
+        )
+        query_serializer.is_valid(raise_exception=True)
+        filters = query_serializer.validated_data
+
         # Filter by title if q is provided
-        q_param = request.query_params.get('q')
+        q_param = filters.get('q')
         if q_param:
             queryset = queryset.filter(title__icontains=q_param)
 
-        # Filter by date range if provided
-        date_from = request.query_params.get('date_from')
-        date_to = request.query_params.get('date_to')
+        # Filter by a validated date range if provided
+        date_from = filters.get('date_from')
+        date_to = filters.get('date_to')
 
         if date_from:
             queryset = queryset.filter(created_at__date__gte=date_from)
@@ -109,20 +120,18 @@ class JournalEntryViewSet(ModelViewSet):
             }
         }
         """
-        query = request.data.get('query', '')
-        date_from = request.data.get('date_from')
-        date_to = request.data.get('date_to')
-        sentiment = request.data.get('sentiment')
-        use_ai = request.data.get('use_ai', False)
+        request_serializer = AdvancedSearchQuerySerializer(data=request.data)
+        request_serializer.is_valid(raise_exception=True)
+        filters = request_serializer.validated_data
 
         # Use advanced search service
         search_service = AdvancedSearchService(request.user)
         results = search_service.search(
-            query=query,
-            date_from=date_from,
-            date_to=date_to,
-            sentiment=sentiment,
-            use_ai=use_ai,
+            query=filters.get('query', ''),
+            date_from=filters.get('date_from'),
+            date_to=filters.get('date_to'),
+            sentiment=filters.get('sentiment'),
+            use_ai=filters.get('use_ai', False),
         )
 
         # Serialize results

@@ -110,6 +110,10 @@ export function LoginPage() {
       </form>
 
       <p className="auth-form__switch">
+        <a href="/accounts/password/reset/">Forgot your password?</a>
+      </p>
+
+      <p className="auth-form__switch">
         No account yet? <Link to="/register">Create one</Link>.
       </p>
 

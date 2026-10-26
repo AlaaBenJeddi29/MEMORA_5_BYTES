@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { installSpeechMock, resetUtterances } from '../../../test/speechMock'
@@ -299,6 +299,33 @@ describe('MemoryBook', () => {
     render(<MemoryBook summaries={[FIRST]} onClose={onClose} />)
     openBook()
     fireEvent.click(screen.getByRole('button', { name: 'Close book' }))
+    expect(onClose).toHaveBeenCalledTimes(2)
+  })
+
+  it('shows a breadcrumb back to reflections on the cover and on the pages', () => {
+    const onClose = vi.fn()
+    render(<MemoryBook summaries={[FIRST, SECOND]} onClose={onClose} />)
+
+    const coverCrumb = screen.getByRole('navigation', { name: 'Breadcrumb' })
+    expect(
+      within(coverCrumb).getByText('My Story').getAttribute('aria-current'),
+    ).toBe('page')
+
+    fireEvent.click(
+      within(coverCrumb).getByRole('button', { name: 'Reflections' }),
+    )
+    expect(onClose).toHaveBeenCalledTimes(1)
+
+    openBook()
+
+    const pageCrumb = screen.getByRole('navigation', { name: 'Breadcrumb' })
+    expect(within(pageCrumb).getByText('My Story').getAttribute('aria-current')).toBe(
+      'page',
+    )
+
+    fireEvent.click(
+      within(pageCrumb).getByRole('button', { name: 'Reflections' }),
+    )
     expect(onClose).toHaveBeenCalledTimes(2)
   })
 

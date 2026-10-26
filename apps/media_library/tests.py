@@ -562,8 +562,8 @@ class GenerateImageApiTests(APITestCase):
         self._override = override_settings(MEDIA_ROOT=self._media_root.name)
         self._override.enable()
         self.addCleanup(self._override.disable)
-        self.owner = User.objects.create_user(username="owner", password="test-pass-123")
-        self.other = User.objects.create_user(username="other", password="test-pass-123")
+        self.owner = User.objects.create_user(username="owner", email="owner@example.com", password="test-pass-123")
+        self.other = User.objects.create_user(username="other", email="other@example.com", password="test-pass-123")
         self.entry = JournalEntry.objects.create(
             user=self.owner,
             title="Morning walk",
@@ -1041,7 +1041,7 @@ class MediaFileModelTests(TestCase):
         self._override = override_settings(MEDIA_ROOT=self._media_root.name)
         self._override.enable()
         self.addCleanup(self._override.disable)
-        self.user = User.objects.create_user(username="owner", password="test-pass-123")
+        self.user = User.objects.create_user(username="owner", email="owner@example.com", password="test-pass-123")
 
     def create_media(self, **overrides):
         fields = {"owner": self.user, "file": image_upload()}
@@ -1199,8 +1199,8 @@ class MediaFileModelTests(TestCase):
 
 class JournalContextTests(TestCase):
     def setUp(self):
-        self.owner = User.objects.create_user(username="owner", password="test-pass-123")
-        self.other = User.objects.create_user(username="other", password="test-pass-123")
+        self.owner = User.objects.create_user(username="owner", email="owner@example.com", password="test-pass-123")
+        self.other = User.objects.create_user(username="other", email="other@example.com", password="test-pass-123")
         self.entry = JournalEntry.objects.create(
             user=self.owner,
             title="Morning walk",
@@ -1285,8 +1285,8 @@ class MediaUploadApiTests(APITestCase):
         )
         self._override.enable()
         self.addCleanup(self._override.disable)
-        self.owner = User.objects.create_user(username="owner", password="test-pass-123")
-        self.other = User.objects.create_user(username="other", password="test-pass-123")
+        self.owner = User.objects.create_user(username="owner", email="owner@example.com", password="test-pass-123")
+        self.other = User.objects.create_user(username="other", email="other@example.com", password="test-pass-123")
         self.url = reverse("media-list")
 
     def authenticate(self, user=None):
@@ -1537,8 +1537,8 @@ class MediaFileDetailApiTests(APITestCase):
         self._override = override_settings(MEDIA_ROOT=self._media_root.name)
         self._override.enable()
         self.addCleanup(self._override.disable)
-        self.owner = User.objects.create_user(username="owner", password="test-pass-123")
-        self.other = User.objects.create_user(username="other", password="test-pass-123")
+        self.owner = User.objects.create_user(username="owner", email="owner@example.com", password="test-pass-123")
+        self.other = User.objects.create_user(username="other", email="other@example.com", password="test-pass-123")
 
     def authenticate(self, user=None):
         self.client.force_authenticate(user=user or self.owner)
@@ -1793,10 +1793,12 @@ class FavoriteApiTests(APITestCase):
         self.addCleanup(self._override.disable)
         self.owner = User.objects.create_user(
             username="owner",
+            email="owner@example.com",
             password="test-pass-123",
         )
         self.other = User.objects.create_user(
             username="other",
+            email="other@example.com",
             password="test-pass-123",
         )
         self.media = MediaFile.objects.create(
@@ -1893,10 +1895,12 @@ class MediaCollectionApiTests(APITestCase):
         self.addCleanup(self._override.disable)
         self.owner = User.objects.create_user(
             username="owner",
+            email="owner@example.com",
             password="test-pass-123",
         )
         self.other = User.objects.create_user(
             username="other",
+            email="other@example.com",
             password="test-pass-123",
         )
         self.media = MediaFile.objects.create(
@@ -2104,10 +2108,12 @@ class MediaCollectionItemApiTests(APITestCase):
         self.addCleanup(self._override.disable)
         self.owner = User.objects.create_user(
             username="owner",
+            email="owner@example.com",
             password="test-pass-123",
         )
         self.other = User.objects.create_user(
             username="other",
+            email="other@example.com",
             password="test-pass-123",
         )
         self.first_media = MediaFile.objects.create(

@@ -19,10 +19,14 @@ DEFAULTS = {
 class BookPreferenceAPITestCase(APITestCase):
     def setUp(self):
         self.alice = User.objects.create_user(
-            username="alice", password="S3cure-Passw0rd!"
+            username="alice",
+            email="alice@example.com",
+            password="S3cure-Passw0rd!",
         )
         self.bob = User.objects.create_user(
-            username="bob", password="S3cure-Passw0rd!"
+            username="bob",
+            email="bob@example.com",
+            password="S3cure-Passw0rd!",
         )
         self.url = reverse("summaries-book-preferences")
         self.client.force_login(self.alice)

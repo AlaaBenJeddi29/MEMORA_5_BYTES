@@ -77,25 +77,42 @@ def env_int(name, default):
         return default
 
 
+# Deployment profile: "development" (default) or "production". Production
+# turns on the secure-cookie/HSTS settings and rejects development secrets.
+# The test runner also runs as development even though Django forces DEBUG
+# off under tests.
+DEPLOYMENT_ENV = os.environ.get("DJANGO_ENV", "development").strip().lower()
+IS_PRODUCTION = DEPLOYMENT_ENV == "production"
+
+
 # ============================================================
 # SECURITY
 # ============================================================
 
-# Keep the real secret key in .env.
-# The fallback is only for local development.
-SECRET_KEY = os.environ.get(
-    "DJANGO_SECRET_KEY",
-    "django-insecure-dev-only-do-not-use-in-production",
-)
+# Keep the real secret key in .env. The fallback only exists for local work.
+DEV_SECRET_KEY = "django-insecure-dev-only-do-not-use-in-production"
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", DEV_SECRET_KEY)
+
+if IS_PRODUCTION and (SECRET_KEY == DEV_SECRET_KEY or len(SECRET_KEY) < 50):
+    raise ImproperlyConfigured(
+        "Set DJANGO_SECRET_KEY to a unique value of at least 50 characters "
+        "when DJANGO_ENV=production."
+    )
 
 # Never use DEBUG=True in production.
-DEBUG = env_bool("DJANGO_DEBUG", default=True)
+DEBUG = env_bool("DJANGO_DEBUG", default=not IS_PRODUCTION)
+if IS_PRODUCTION and DEBUG:
+    raise ImproperlyConfigured("DJANGO_DEBUG cannot be enabled in production.")
 
 # Allowed hosts for local development.
 ALLOWED_HOSTS = env_list(
     "DJANGO_ALLOWED_HOSTS",
     "127.0.0.1,localhost,testserver",
 )
+if not IS_PRODUCTION and "testserver" not in ALLOWED_HOSTS:
+    # Django's test client uses the host "testserver"; .env files often list
+    # only real dev hosts, so make the test runner independent of them.
+    ALLOWED_HOSTS.append("testserver")
 
 
 # ============================================================
@@ -197,6 +214,7 @@ AUTH_PASSWORD_VALIDATORS = [
             "django.contrib.auth.password_validation."
             "MinimumLengthValidator"
         ),
+        "OPTIONS": {"min_length": 10},
     },
     {
         "NAME": (
@@ -212,10 +230,50 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-# MEMORA currently uses Django's built-in User model.
+# Modern PBKDF2 hashing, selected explicitly so the policy is visible and
+# stable across Django upgrades.
+PASSWORD_HASHERS = [
+    "django.contrib.auth.hashers.PBKDF2PasswordHasher",
+]
 
-# Les pages HTML protegees renvoient vers la connexion de l'admin.
-LOGIN_URL = "/admin/login/"
+# Custom user model (accounts.User). It intentionally shares the historical
+# auth_user table; see apps/accounts/migrations/0001_initial.py.
+AUTH_USER_MODEL = "accounts.User"
+
+# HTML pages use the dedicated sign-in page; the SPA keeps its own /login route.
+LOGIN_URL = "/accounts/login/"
+LOGIN_REDIRECT_URL = "/people/"
+LOGOUT_REDIRECT_URL = "/accounts/login/"
+
+# Brute-force protection (per account, stored in the database).
+LOGIN_LOCKOUT_MAX_ATTEMPTS = env_int("LOGIN_LOCKOUT_MAX_ATTEMPTS", 5)
+LOGIN_LOCKOUT_SECONDS = env_int("LOGIN_LOCKOUT_SECONDS", 900)
+
+
+# ============================================================
+# EMAIL
+# ============================================================
+
+# Console backend in development prints verification and reset emails in the
+# runserver terminal. Production must provide real SMTP settings.
+DEFAULT_FROM_EMAIL = os.environ.get(
+    "DJANGO_DEFAULT_FROM_EMAIL",
+    "MEMORA <no-reply@memora.local>",
+)
+EMAIL_BACKEND = os.environ.get(
+    "DJANGO_EMAIL_BACKEND",
+    (
+        "django.core.mail.backends.smtp.EmailBackend"
+        if IS_PRODUCTION
+        else "django.core.mail.backends.console.EmailBackend"
+    ),
+)
+EMAIL_HOST = os.environ.get("DJANGO_EMAIL_HOST", "localhost")
+EMAIL_PORT = env_int("DJANGO_EMAIL_PORT", 587)
+EMAIL_HOST_USER = os.environ.get("DJANGO_EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.environ.get("DJANGO_EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = env_bool("DJANGO_EMAIL_USE_TLS", default=True)
+EMAIL_TIMEOUT = env_int("DJANGO_EMAIL_TIMEOUT", 10)
 
 
 # ============================================================
@@ -343,7 +401,10 @@ CORS_ALLOW_CREDENTIALS = True
 # ============================================================
 
 SESSION_COOKIE_SAMESITE = "Lax"
-SESSION_COOKIE_SECURE = False
+SESSION_COOKIE_SECURE = env_bool(
+    "DJANGO_SESSION_COOKIE_SECURE",
+    default=IS_PRODUCTION,
+)
 SESSION_COOKIE_HTTPONLY = True
 
 
@@ -351,9 +412,15 @@ SESSION_COOKIE_HTTPONLY = True
 # CSRF COOKIE SETTINGS
 # ============================================================
 
+# The SPA reads this cookie and echoes it in X-CSRFToken, so it cannot be
+# HTTP-only; the token is still protected by SameSite + double-submit.
 CSRF_COOKIE_HTTPONLY = False
 CSRF_COOKIE_SAMESITE = "Lax"
-CSRF_COOKIE_SECURE = False
+CSRF_COOKIE_SECURE = env_bool(
+    "DJANGO_CSRF_COOKIE_SECURE",
+    default=IS_PRODUCTION,
+)
+CSRF_FAILURE_VIEW = "config.views.csrf_failure"
 
 
 # ============================================================
@@ -385,3 +452,83 @@ GEMINI_TIMEOUT_SECONDS = env_int(
     "GEMINI_TIMEOUT_SECONDS",
     30,
 )
+
+
+# ============================================================
+# ADMIN URL AND SECURITY HEADERS
+# ============================================================
+
+# Moving the admin off /admin/ makes automated probing of the default path
+# useless. It is still staff-only; Django enforces that itself.
+ADMIN_URL = (
+    os.environ.get("DJANGO_ADMIN_URL", "memory-admin/").strip("/")
+    or "memory-admin"
+) + "/"
+
+SECURE_SSL_REDIRECT = env_bool(
+    "DJANGO_SECURE_SSL_REDIRECT",
+    default=IS_PRODUCTION,
+)
+SECURE_HSTS_SECONDS = env_int(
+    "DJANGO_SECURE_HSTS_SECONDS",
+    31536000 if IS_PRODUCTION else 0,
+)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool(
+    "DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS",
+    default=IS_PRODUCTION,
+)
+SECURE_HSTS_PRELOAD = env_bool(
+    "DJANGO_SECURE_HSTS_PRELOAD",
+    default=IS_PRODUCTION,
+)
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = "same-origin"
+X_FRAME_OPTIONS = "DENY"
+# Honour the reverse proxy's TLS header when the deployment terminates TLS
+# in front of Django.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+
+# ============================================================
+# LOGGING
+# ============================================================
+
+# Security events (failed/locked logins, verification, permission denied) are
+# logged by apps.accounts; Django's own security logger is kept at WARNING.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": "{levelname} {asctime} {name} {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "verbose",
+        },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": "INFO",
+    },
+    "loggers": {
+        "django.request": {
+            "handlers": ["console"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+        "django.security": {
+            "handlers": ["console"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "apps.accounts": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+    },
+}

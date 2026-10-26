@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}Something went wrong · MEMORA{% endblock %}
+
+{% block content %}
+<section class="status-page" aria-labelledby="error-heading">
+    <p class="eyebrow">500</p>
+    <h1 id="error-heading">Something went wrong on our side</h1>
+    <p>
+        The page could not be loaded. Please try again in a moment. If the
+        problem continues, contact the administrator.
+    </p>
+    <p>
+        <a class="button-link" href="{% url 'people:person_list' %}">Try again</a>
+    </p>
+</section>
+{% endblock %}

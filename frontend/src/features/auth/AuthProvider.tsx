@@ -53,10 +53,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const register = useCallback(async (input: RegisterInput) => {
-    const currentUser = await authApi.register(input)
-    setUser(currentUser)
-    setStatus('authenticated')
-    return currentUser
+    // Registration no longer starts a session: the account stays inactive
+    // until the emailed verification link is used.
+    return authApi.register(input)
   }, [])
 
   const logout = useCallback(async () => {

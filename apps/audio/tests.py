@@ -643,7 +643,9 @@ class SummaryServiceTests(TestCase):
 class ProcessAudioEntryTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(
-            username="orchestrator", password="Str0ng-Pass!23"
+            username="orchestrator",
+            email="orchestrator@example.com",
+            password="Str0ng-Pass!23",
         )
 
     def _make_entry(self):
@@ -815,7 +817,11 @@ class ProcessEntryByPkTests(TestCase):
     """The background worker reached by the upload thread."""
 
     def setUp(self):
-        self.user = User.objects.create_user(username="worker", password="Str0ng-Pass!23")
+        self.user = User.objects.create_user(
+            username="worker",
+            email="worker@example.com",
+            password="Str0ng-Pass!23",
+        )
 
     def test_processes_a_pending_entry(self):
         entry = AudioEntry.objects.create(
@@ -851,8 +857,16 @@ class ProcessEntryByPkTests(TestCase):
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp(prefix="memora_audio_views_"))
 class AudioViewTests(APITestCase):
     def setUp(self):
-        self.user = User.objects.create_user(username="marlem", password="Str0ng-Pass!23")
-        self.other = User.objects.create_user(username="someone", password="Str0ng-Pass!23")
+        self.user = User.objects.create_user(
+            username="marlem",
+            email="marlem@example.com",
+            password="Str0ng-Pass!23",
+        )
+        self.other = User.objects.create_user(
+            username="someone",
+            email="someone@example.com",
+            password="Str0ng-Pass!23",
+        )
 
     def _list_url(self):
         return reverse("audio-list-create")

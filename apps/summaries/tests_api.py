@@ -39,10 +39,14 @@ GENERATED_RESULT = {
 class SummaryAPITestCase(APITestCase):
     def setUp(self):
         self.alice = User.objects.create_user(
-            username="alice", password="S3cure-Passw0rd!"
+            username="alice",
+            email="alice@example.com",
+            password="S3cure-Passw0rd!",
         )
         self.bob = User.objects.create_user(
-            username="bob", password="S3cure-Passw0rd!"
+            username="bob",
+            email="bob@example.com",
+            password="S3cure-Passw0rd!",
         )
         self.alice_entry = JournalEntry.objects.create(
             user=self.alice,
