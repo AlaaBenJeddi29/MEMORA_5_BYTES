@@ -20,6 +20,11 @@
   --text: #23262f;
   --text-muted: #5b6070;
 
+  /* Inputs (kept as tokens so the accessibility themes can retune them) */
+  --input-placeholder: #9aa0af;
+  --border-hover: #bdb6a8;
+  --focus-outline: #4f46e5;
+
   /* Brand / primary */
   --primary: #4f46e5;
   --primary-strong: #4338ca;
@@ -361,11 +366,11 @@ hr {
 }
 
 .input::placeholder {
-  color: #9aa0af;
+  color: var(--input-placeholder);
 }
 
 .input:hover {
-  border-color: #bdb6a8;
+  border-color: var(--border-hover);
 }
 
 .input:focus {
@@ -1190,14 +1195,25 @@ a.app-user__link:hover {
  * Audio feature styles
  * ------------------------------------------------------------------ */
 
-/* Page layout */
+/* Page layout — deliberately as wide as the app content column allows
+   (.app-main already caps every page at --content-max), so the memos get the
+   same horizontal room as the journal instead of a narrow 720px reading column. */
 .audio-page {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: var(--space-6, 1.5rem);
+  width: 100%;
+  max-width: none;
+  margin-inline: auto;
+  padding: var(--space-6);
   display: flex;
   flex-direction: column;
-  gap: var(--space-8, 2rem);
+  gap: var(--space-6);
+}
+
+/* Recorder and file upload share one horizontal band on wide screens. */
+.audio-page__intake {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
 }
 
 .audio-page__section-title {
@@ -1219,7 +1235,7 @@ a.app-user__link:hover {
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: var(--space-5);
 }
 
 .audio-page__transcript-banner blockquote {
@@ -1325,38 +1341,67 @@ a.app-user__link:hover {
   font-weight: 600;
 }
 
-/* Audio entry card */
+/* Audio entry card — one wide card per memo: header, three columns, action row */
 .audio-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 1.25rem;
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: var(--space-4);
+  transition: box-shadow var(--transition), border-color var(--transition);
+}
+
+.audio-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
 }
 
 .audio-card__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
+  gap: var(--space-4);
 }
 
+/* Date and duration read on one line, like the journal entry headers. */
 .audio-card__meta {
   display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
 }
 
 .audio-card__date {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
 .audio-card__duration {
-  font-size: 0.78rem;
+  font-size: var(--text-sm);
   color: var(--text-muted);
+}
+
+/* The three columns: playback + language | sentiment + summary | transcript.
+   auto-fit keeps them equal when all three are there and lets a lone column
+   (a memo still being analysed) take the whole width. */
+.audio-card__body {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.audio-card__column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.audio-card__player {
+  min-width: 0;
 }
 
 .audio-card__audio {
@@ -1364,12 +1409,6 @@ a.app-user__link:hover {
 }
 
 /* AI result rows (language, sentiment) */
-.audio-card__results {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
 .audio-card__result-row {
   display: flex;
   align-items: flex-start;
@@ -1434,13 +1473,14 @@ a.app-user__link:hover {
 
 /* Result blocks (summary, transcript) */
 .audio-card__result-block {
-  padding: 0.75rem;
-  border-radius: 8px;
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
   background: var(--surface-muted);
   border: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: var(--space-2);
+  min-width: 0;
 }
 
 .audio-card__summary-text {
@@ -1489,12 +1529,71 @@ a.app-user__link:hover {
   font-size: 0.9rem;
 }
 
+/* Action row: the secondary action stays left, the main actions are grouped
+   right so they line up from one card to the next. */
 .audio-card__footer {
   display: flex;
-  justify-content: flex-end;
-  gap: var(--space-2);
-  padding-top: 0.25rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding-top: var(--space-3);
   border-top: 1px solid var(--border);
+}
+
+.audio-card__footer-start,
+.audio-card__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* Keeps the group on the right even when a card has no left-hand action. */
+.audio-card__actions {
+  margin-inline-start: auto;
+}
+
+/* Tablet: two columns for the analysis, transcript below them. */
+@media (max-width: 1100px) {
+  .audio-card__body {
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  }
+}
+
+/* Mobile: everything stacks, the intake goes back to one column and the
+   action buttons take the full width so they stay easy to tap. */
+@media (max-width: 720px) {
+  .audio-page {
+    padding: var(--space-4);
+    gap: var(--space-5);
+  }
+
+  .audio-page__intake {
+    grid-template-columns: 1fr;
+  }
+
+  .audio-card {
+    padding: var(--space-4);
+  }
+
+  .audio-card__body {
+    grid-template-columns: 1fr;
+  }
+
+  .audio-card__footer {
+    align-items: stretch;
+  }
+
+  .audio-card__footer-start,
+  .audio-card__actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .audio-card__actions .btn {
+    flex: 1 1 auto;
+  }
 }
 
 /* ------------------------------------------------------------------ *
@@ -1580,4 +1679,480 @@ a.app-user__link:hover {
   .confirm-dialog::backdrop {
     animation: none;
   }
+}
+
+/* ------------------------------------------------------------------ *
+ * Accessibility widget & user preferences
+ *
+ * `components/AccessibilityWidget.tsx` only writes `data-a11y-*` attributes on
+ * <html> (see `utils/accessibilityPreferences.ts`); this section is where those
+ * attributes really change the page. Every size token is rem-based, so scaling
+ * the root font size scales the whole layout, spacing included, and nothing
+ * overflows at A+.
+ * ------------------------------------------------------------------ */
+
+html[data-a11y-text-size='sm'] {
+  font-size: 93.75%; /* 15px */
+}
+html[data-a11y-text-size='lg'] {
+  font-size: 118.75%; /* 19px — A+ */
+}
+
+/* Dark mode: every surface and text token is swapped, keeping ≥ 4.5:1 for body
+   text and ≥ 3:1 for large text and UI borders. */
+html[data-a11y-theme='dark'] {
+  --bg: #12141c;
+  --surface: #191c26;
+  --surface-muted: #22252f;
+  --border: #2f3340;
+  --border-strong: #4a5062;
+  --border-hover: #5a6072;
+
+  --text: #eceef4;
+  --text-muted: #b9bfd0;
+  --input-placeholder: #8b93a6;
+
+  --primary: #8b93ff;
+  --primary-strong: #a5abff;
+  --primary-soft: #242a55;
+  --primary-contrast: #12141c;
+  --focus-outline: #a5abff;
+
+  --danger: #ff9b9b;
+  --danger-bg: #3a1512;
+  --danger-border: #7a2e28;
+  --success: #6ee7a0;
+  --success-bg: #10301f;
+  --success-border: #1f6b41;
+  --warning: #f5c169;
+  --warning-bg: #3a2a12;
+  --warning-border: #7a5a26;
+  --info: #8fc2ff;
+  --info-bg: #12283f;
+  --info-border: #2a5a8a;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 8px 28px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.6);
+
+  color-scheme: dark;
+}
+
+/* High contrast: pure black on white, 21:1 for body text, hard borders. */
+html[data-a11y-contrast='high'] {
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-muted: #efefef;
+  --border: #000000;
+  --border-strong: #000000;
+  --border-hover: #000000;
+
+  --text: #000000;
+  --text-muted: #1f1f1f;
+  --input-placeholder: #333333;
+
+  --primary: #000000;
+  --primary-strong: #1a1a1a;
+  --primary-soft: #e6e6e6;
+  --primary-contrast: #ffffff;
+  --focus-outline: #000000;
+
+  --danger: #8a0000;
+  --danger-bg: #ffffff;
+  --danger-border: #000000;
+  --success: #065b34;
+  --success-bg: #ffffff;
+  --success-border: #000000;
+  --warning: #7a3800;
+  --warning-bg: #ffffff;
+  --warning-border: #000000;
+  --info: #0b3d91;
+  --info-bg: #ffffff;
+  --info-border: #000000;
+}
+
+/* Thick borders only where a card, control or message is outlined. */
+html[data-a11y-contrast='high'] :is(.card, .audio-card, .alert, .btn, .input, .voice-recorder, .a11y-panel) {
+  border-width: 2px;
+}
+
+html[data-a11y-contrast='high'] a,
+html[data-a11y-contrast='high'] .side-nav__link {
+  text-decoration: underline;
+}
+
+/* Dark *and* high contrast: white on black. The focus ring is yellow, the one
+   colour that stays visible against both surfaces. */
+html[data-a11y-theme='dark'][data-a11y-contrast='high'] {
+  --bg: #000000;
+  --surface: #000000;
+  --surface-muted: #0d0d0d;
+  --border: #ffffff;
+  --border-strong: #ffffff;
+  --border-hover: #ffffff;
+
+  --text: #ffffff;
+  --text-muted: #f2f2f2;
+  --input-placeholder: #e6e6e6;
+
+  --primary: #ffffff;
+  --primary-strong: #ffffff;
+  --primary-soft: #1a1a1a;
+  --primary-contrast: #000000;
+  --focus-outline: #ffd400;
+
+  --danger: #ff8080;
+  --danger-bg: #000000;
+  --danger-border: #ffffff;
+  --success: #66ffb3;
+  --success-bg: #000000;
+  --success-border: #ffffff;
+  --warning: #ffcc66;
+  --warning-bg: #000000;
+  --warning-border: #ffffff;
+  --info: #66b3ff;
+  --info-bg: #000000;
+  --info-border: #ffffff;
+}
+
+/* Keyboard navigation: the ring shows on any focus, pointer included, so the
+   active control is never ambiguous. */
+html[data-a11y-focus='enhanced'] :is(a, button, input, select, textarea, [tabindex]):focus {
+  outline: 3px solid var(--focus-outline);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+/* ------------------------------------------------------------------ *
+ * Floating trigger + panel
+ * ------------------------------------------------------------------ */
+
+/* Column-reverse keeps the panel above the trigger while the trigger stays
+   first in the tab order. */
+.a11y-widget {
+  position: fixed;
+  inset-block-end: var(--space-5);
+  inset-inline-end: var(--space-5);
+  z-index: 45;
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+
+.a11y-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+  transition: background var(--transition), transform var(--transition);
+}
+
+.a11y-trigger:hover {
+  background: var(--primary-soft);
+}
+
+.a11y-trigger:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+.a11y-trigger[aria-expanded='true'] {
+  background: var(--primary);
+  color: var(--primary-contrast);
+  border-color: var(--primary);
+}
+
+.a11y-trigger__icon {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.a11y-panel {
+  width: min(21rem, calc(100vw - 2 * var(--space-5)));
+  max-height: calc(100vh - 8rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  animation: a11y-panel-in 160ms ease;
+}
+
+@keyframes a11y-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .a11y-panel {
+    animation: none;
+  }
+}
+
+.a11y-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.a11y-panel__title {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  margin: 0;
+}
+
+.a11y-panel__caption {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--primary-soft);
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+
+.a11y-panel__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+
+.a11y-panel__label {
+  margin: 0;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.a11y-panel__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.a11y-chip {
+  font: inherit;
+  font-weight: 600;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.a11y-chip:hover {
+  background: var(--surface-muted);
+}
+
+.a11y-chip:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+.a11y-chip--active {
+  background: var(--primary);
+  color: var(--primary-contrast);
+  border-color: var(--primary);
+}
+
+.a11y-switch {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  font: inherit;
+  text-align: start;
+  padding: var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.a11y-switch:hover {
+  background: var(--surface-muted);
+}
+
+.a11y-switch:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+.a11y-switch__track {
+  flex: 0 0 auto;
+  width: 2.5rem;
+  height: 1.4rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-muted);
+  position: relative;
+  transition: background var(--transition);
+}
+
+.a11y-switch__thumb {
+  position: absolute;
+  inset-block-start: 2px;
+  inset-inline-start: 2px;
+  width: calc(1.4rem - 6px);
+  height: calc(1.4rem - 6px);
+  border-radius: var(--radius-pill);
+  background: var(--border-strong);
+  transition: transform var(--transition), background var(--transition);
+}
+
+.a11y-switch--on .a11y-switch__track {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.a11y-switch--on .a11y-switch__thumb {
+  background: var(--primary-contrast);
+  /* 1rem travel, logical direction so it mirrors correctly in RTL. */
+  transform: translateX(1rem);
+}
+
+.a11y-switch__text {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.a11y-switch__label {
+  font-weight: 600;
+}
+
+.a11y-switch__hint {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.a11y-switch__state {
+  flex: 0 0 auto;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.a11y-panel__shortcuts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.a11y-panel__shortcut {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.a11y-panel__kbd {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  padding: 2px var(--space-2);
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  white-space: nowrap;
+}
+
+.a11y-panel__hint {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+/* Small screens: the panel uses nearly the full width and the trigger moves in
+   from the very corner so it never sits on top of a card footer. */
+@media (max-width: 600px) {
+  .a11y-widget {
+    inset-block-end: var(--space-4);
+    inset-inline-end: var(--space-4);
+  }
+
+  .a11y-panel {
+    width: calc(100vw - 2 * var(--space-4));
+    max-height: min(70vh, calc(100vh - 6rem));
+  }
+}
+
+/* The voice memo cards end with their action buttons, right where the floating
+   trigger lives: reserve room so nothing is ever covered. */
+.audio-page {
+  padding-block-end: calc(var(--space-7) + 3.5rem);
+}
+
+/* ------------------------------------------------------------------ *
+ * 7. Read-aloud (Web Speech API)
+ * ------------------------------------------------------------------ */
+
+.read-aloud {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.read-aloud__controls {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.read-aloud__status {
+  margin: 0;
+  padding-inline-start: var(--space-2);
+  border-left: 3px solid var(--primary);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.read-aloud__error {
+  margin: 0;
+  flex: 1 1 100%;
+  font-size: var(--text-sm);
+  color: var(--danger);
+}
+
+/* Page-level notice when the browser has no speech synthesis at all. */
+.audio-page__notice {
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-md);
+  background: var(--warning-bg);
+  color: var(--warning);
+  font-size: var(--text-sm);
 }

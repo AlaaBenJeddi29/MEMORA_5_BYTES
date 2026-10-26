@@ -1,7 +1,10 @@
 import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AudioEntryCard } from './AudioEntryCard'
+import { cancelSpeech, getSpeechState } from '../../../utils/speech'
+import { clearAnnouncement } from '../../../utils/announcements'
+import { type SpeechStub, installSpeech } from '../../../test/fakeSpeech'
 import type { AudioEntryPatch } from '../services/audio'
 import type { AudioEntry } from '../types/audio'
 
@@ -116,6 +119,35 @@ describe('AudioEntryCard editing', () => {
     )
   })
 
+  it('reflects the journal action on its button', () => {
+    const entry = makeEntry()
+    const onUpdate = vi.fn(async () => true)
+
+    const first = render(
+      <AudioEntryCard
+        entry={entry}
+        onDelete={vi.fn()}
+        onUpdate={onUpdate}
+        onUseTranscript={vi.fn()}
+        journalAction="saving"
+      />,
+    )
+    expect(screen.getByText('Adding to journal…')).toBeTruthy()
+    expect((screen.getByText('Adding to journal…').closest('button') as HTMLButtonElement).disabled).toBe(true)
+    first.unmount()
+
+    render(
+      <AudioEntryCard
+        entry={entry}
+        onDelete={vi.fn()}
+        onUpdate={onUpdate}
+        onUseTranscript={vi.fn()}
+        journalAction="saved"
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Open this memo in the journal' })).toBeTruthy()
+  })
+
   it('opens the microphone recorder from inside edit mode', () => {
     renderCard(makeEntry())
 
@@ -135,6 +167,83 @@ describe('AudioEntryCard editing', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
 
     expect(screen.queryByLabelText('Edit transcript')).toBeNull()
+    expect(screen.getByText('I bought bread this morning.')).toBeTruthy()
+  })
+})
+
+describe('AudioEntryCard read-aloud', () => {
+  let stub: SpeechStub
+
+  beforeEach(() => {
+    cancelSpeech()
+    clearAnnouncement()
+    stub = installSpeech({
+      voices: [
+        { lang: 'fr-FR', name: 'Amelie' },
+        { lang: 'en-US', name: 'Alex' },
+      ],
+    })
+  })
+
+  afterEach(() => {
+    cancelSpeech()
+    clearAnnouncement()
+    stub.restore()
+  })
+
+  it('offers one button per text of the memo', () => {
+    renderCard(makeEntry())
+
+    expect(screen.getByRole('button', { name: /read the transcript of the memo/i })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /read the summary of the memo/i })).toBeTruthy()
+  })
+
+  it('speaks the summary in the language the AI detected', () => {
+    renderCard(makeEntry({ language_code: 'fr', transcript: "J'ai achete du pain." }))
+
+    fireEvent.click(screen.getByRole('button', { name: /read the summary of the memo/i }))
+
+    expect(stub.utterances).toHaveLength(1)
+    expect(stub.utterances[0].text).toBe('A grocery run.')
+    expect(stub.utterances[0].voice?.name).toBe('Amelie')
+    expect(getSpeechState()).toMatchObject({ status: 'playing', key: '7:summary' })
+  })
+
+  it('leaves the original recording exactly where it was', () => {
+    renderCard(makeEntry())
+    const player = document.querySelector('audio')
+    expect(player?.getAttribute('src')).toBe('/media/audio/1/memo.wav')
+
+    fireEvent.click(screen.getByRole('button', { name: /read the transcript of the memo/i }))
+
+    expect(document.querySelector('audio')).toBe(player)
+    expect(player?.getAttribute('src')).toBe('/media/audio/1/memo.wav')
+    expect(screen.getByText('I bought bread this morning.')).toBeTruthy()
+  })
+
+  it('stops when the memo is edited again: no reading over a draft', () => {
+    renderCard(makeEntry())
+    fireEvent.click(screen.getByRole('button', { name: /read the transcript of the memo/i }))
+    expect(screen.getByRole('status').textContent).toContain('Reading the transcript')
+
+    fireEvent.click(screen.getByRole('button', { name: /edit the transcript/i }))
+
+    expect(getSpeechState().status).toBe('idle')
+    expect(screen.queryByRole('button', { name: /read the/i })).toBeNull()
+  })
+
+  it('keeps replacing, editing and deleting a memo beside the new controls', () => {
+    renderCard(makeEntry())
+
+    expect(screen.getByRole('button', { name: /delete voice memo/i })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /replace audio/i })).toBeTruthy()
+    expect(screen.getByLabelText('Choose a new recording for this memo')).toBeTruthy()
+
+    // Editing still works exactly as before: the read-aloud block changes nothing.
+    fireEvent.click(screen.getByRole('button', { name: /edit the transcript/i }))
+    fireEvent.change(screen.getByLabelText('Edit transcript'), { target: { value: 'corrige' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
     expect(screen.getByText('I bought bread this morning.')).toBeTruthy()
   })
 })
