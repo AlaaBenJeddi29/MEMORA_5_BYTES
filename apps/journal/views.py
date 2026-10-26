@@ -8,7 +8,8 @@ from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
 from .models import JournalEntry
-from .serializers import JournalEntrySerializer
+from .search_service import AdvancedSearchService
+from .serializers import AdvancedSearchResultSerializer, JournalEntrySerializer
 
 
 class JournalPagination(pagination.PageNumberPagination):
@@ -30,7 +31,8 @@ class JournalEntryViewSet(ModelViewSet):
       PUT    /api/journal/entries/{id}/      — replace a single entry
       PATCH  /api/journal/entries/{id}/      — partial update
       DELETE /api/journal/entries/{id}/      — delete an entry
-      GET    /api/journal/entries/search/    — search by title and date
+      GET    /api/journal/entries/search/    — simple search by title and date
+      POST   /api/journal/entries/advanced-search/  — AI-powered advanced search
     """
 
     permission_classes = [IsAuthenticated]
@@ -48,7 +50,7 @@ class JournalEntryViewSet(ModelViewSet):
     @action(detail=False, methods=['get'], url_path='search')
     def search(self, request):
         """
-        Search journal entries by title and date range.
+        Simple search journal entries by title and date range.
 
         Query parameters:
           q (optional)          — filter title__icontains=q
@@ -80,3 +82,50 @@ class JournalEntryViewSet(ModelViewSet):
 
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['post'], url_path='advanced-search')
+    def advanced_search(self, request):
+        """
+        AI-powered advanced search with semantic analysis.
+
+        Request body:
+        {
+            "query": "I was happy in summer",
+            "date_from": "2024-06-01",
+            "date_to": "2024-08-31",
+            "sentiment": "happy",
+            "use_ai": true
+        }
+
+        Response:
+        {
+            "results": [...entries],
+            "total": 5,
+            "ai_analysis": {
+                "query": "I was happy in summer",
+                "extracted_sentiments": ["happy"],
+                "extracted_themes": ["summer", "vacation"],
+                "summary": "You wrote 5 entries during summer..."
+            }
+        }
+        """
+        query = request.data.get('query', '')
+        date_from = request.data.get('date_from')
+        date_to = request.data.get('date_to')
+        sentiment = request.data.get('sentiment')
+        use_ai = request.data.get('use_ai', False)
+
+        # Use advanced search service
+        search_service = AdvancedSearchService(request.user)
+        results = search_service.search(
+            query=query,
+            date_from=date_from,
+            date_to=date_to,
+            sentiment=sentiment,
+            use_ai=use_ai,
+        )
+
+        # Serialize results
+        serializer = AdvancedSearchResultSerializer(results)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
