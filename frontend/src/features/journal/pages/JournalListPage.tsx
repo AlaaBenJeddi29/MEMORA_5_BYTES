@@ -282,6 +282,7 @@ export function JournalListPage() {
           </div>
         </section>
       )}
+
       <JournalEntryList
         page={entries}
         onEdit={handleEdit}
