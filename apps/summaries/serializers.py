@@ -10,7 +10,15 @@ from rest_framework import serializers
 
 from apps.journal.models import JournalEntry
 
-from .models import Summary, validate_themes
+from .models import (
+    BOOK_THEME_CHOICES,
+    COVER_STYLE_CHOICES,
+    FONT_STYLE_CHOICES,
+    BookPreference,
+    Summary,
+    validate_themes,
+)
+from .search import MAX_QUERY_LENGTH
 
 MAX_SUMMARY_TEXT_LENGTH = 4_000
 MAX_ILLUSTRATION_PROMPT_LENGTH = 1_000
@@ -79,6 +87,39 @@ class SummarySerializer(serializers.ModelSerializer):
         return value
 
 
+class SummarySearchQuerySerializer(serializers.Serializer):
+    """Validates the local summary search query string."""
+
+    q = serializers.CharField(
+        max_length=MAX_QUERY_LENGTH,
+        allow_blank=False,
+        trim_whitespace=True,
+        error_messages={
+            "required": "Enter a search query.",
+            "blank": "Enter a search query.",
+            "max_length": (
+                f"Keep the search query to {MAX_QUERY_LENGTH} characters or fewer."
+            ),
+        },
+    )
+
+
+class SummarySearchHitSerializer(serializers.Serializer):
+    """One scored search result, nested around the existing summary shape."""
+
+    summary = SummarySerializer(read_only=True)
+    score = serializers.FloatField(read_only=True)
+    matched_fields = serializers.ListField(
+        child=serializers.CharField(),
+        read_only=True,
+    )
+    matched_terms = serializers.ListField(
+        child=serializers.CharField(),
+        read_only=True,
+    )
+    snippet = serializers.CharField(read_only=True, allow_blank=True)
+
+
 class GenerateSummarySerializer(serializers.Serializer):
     """Only the journal entry ID is accepted for generation."""
 
@@ -86,3 +127,20 @@ class GenerateSummarySerializer(serializers.Serializer):
         min_value=1,
         max_value=MAX_JOURNAL_ENTRY_ID,
     )
+
+
+class BookPreferenceSerializer(serializers.ModelSerializer):
+    """Validated style identifiers for the owner's memory book.
+
+    ``owner`` is intentionally absent: the view always binds the instance to
+    ``request.user`` and ignores any client-supplied ownership field. The
+    explicit choices make PUT require every field; PATCH stays partial.
+    """
+
+    cover_style = serializers.ChoiceField(choices=COVER_STYLE_CHOICES)
+    theme_id = serializers.ChoiceField(choices=BOOK_THEME_CHOICES)
+    font_style = serializers.ChoiceField(choices=FONT_STYLE_CHOICES)
+
+    class Meta:
+        model = BookPreference
+        fields = ["cover_style", "theme_id", "font_style"]

@@ -10,14 +10,21 @@ import logging
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.shortcuts import get_object_or_404
-from rest_framework import status
+from rest_framework import pagination, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .journal_provider import JournalEntryNotFound, journal_provider
-from .models import Summary
-from .serializers import GenerateSummarySerializer, SummarySerializer
+from .models import BookPreference, Summary
+from .search import EmptySearchQuery, search_user_summaries
+from .serializers import (
+    BookPreferenceSerializer,
+    GenerateSummarySerializer,
+    SummarySearchHitSerializer,
+    SummarySearchQuerySerializer,
+    SummarySerializer,
+)
 from .services import (
     SummaryConfigurationError,
     SummaryInputError,
@@ -29,6 +36,14 @@ from .services import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class SummarySearchPagination(pagination.PageNumberPagination):
+    """Small pages for relevance-ranked search results."""
+
+    page_size = 20
+    page_size_query_param = "page_size"
+    max_page_size = 50
 
 
 class SummaryListCreateView(APIView):
@@ -50,6 +65,77 @@ class SummaryListCreateView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save(owner=request.user)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class SummarySearchView(APIView):
+    """Search the caller's summaries by concept or phrase.
+
+    Ranking is local and owner-scoped. This endpoint never calls Gemini and
+    never writes to the database.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        query_serializer = SummarySearchQuerySerializer(
+            data=request.query_params
+        )
+        query_serializer.is_valid(raise_exception=True)
+        query = query_serializer.validated_data["q"]
+
+        try:
+            hits = search_user_summaries(request.user, query)
+        except EmptySearchQuery:
+            return Response(
+                {"q": ["Enter at least one meaningful search term."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        paginator = SummarySearchPagination()
+        page = paginator.paginate_queryset(hits, request, view=self)
+        if page is None:
+            return Response(SummarySearchHitSerializer(hits, many=True).data)
+
+        serializer = SummarySearchHitSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
+
+
+class BookPreferenceView(APIView):
+    """Read, update, or reset the caller's memory-book customization.
+
+    The endpoint has no user identifier: every lookup and write is bound to
+    ``request.user``. Reading before the first save returns model defaults
+    without creating a row; the row is created on the first successful save.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        preference = BookPreference.objects.filter(owner=request.user).first()
+        if preference is None:
+            preference = BookPreference(owner=request.user)
+        return Response(BookPreferenceSerializer(preference).data)
+
+    def put(self, request):
+        return self._save(request, partial=False)
+
+    def patch(self, request):
+        return self._save(request, partial=True)
+
+    def delete(self, request):
+        BookPreference.objects.filter(owner=request.user).delete()
+        return Response(BookPreferenceSerializer(BookPreference(owner=request.user)).data)
+
+    def _save(self, request, partial):
+        preference = BookPreference.objects.filter(owner=request.user).first()
+        serializer = BookPreferenceSerializer(
+            preference or BookPreference(owner=request.user),
+            data=request.data,
+            partial=partial,
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save(owner=request.user)
+        return Response(serializer.data)
 
 
 class SummaryDetailView(APIView):

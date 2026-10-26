@@ -18,6 +18,8 @@ export interface DialogProps {
   children: ReactNode
   /** Optional actions rendered below the body. */
   footer?: ReactNode
+  /** Widens the panel for two-column content such as a live preview. */
+  wide?: boolean
 }
 
 /**
@@ -25,7 +27,7 @@ export interface DialogProps {
  * Tab is trapped, Escape and the backdrop close it, and focus returns to the
  * trigger (or the main landmark) when it unmounts.
  */
-export function Dialog({ title, onClose, children, footer }: DialogProps) {
+export function Dialog({ title, onClose, children, footer, wide = false }: DialogProps) {
   const titleId = useId()
   const panelRef = useRef<HTMLDivElement>(null)
   const onCloseRef = useRef(onClose)
@@ -96,7 +98,7 @@ export function Dialog({ title, onClose, children, footer }: DialogProps) {
         onClick={() => onCloseRef.current()}
       />
       <div
-        className="dialog"
+        className={wide ? 'dialog dialog--wide' : 'dialog'}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
