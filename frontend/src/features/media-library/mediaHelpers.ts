@@ -4,6 +4,8 @@ import type { MediaType } from '../../types/media'
 /** Mirrors the backend defaults in config/settings.py. The server re-validates. */
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 export const MAX_PROMPT_LENGTH = 1000
+export const MAX_COLLECTION_NAME_LENGTH = 80
+export const MAX_COLLECTION_DESCRIPTION_LENGTH = 500
 export const ALLOWED_UPLOAD_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 const ALLOWED_UPLOAD_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp']
 

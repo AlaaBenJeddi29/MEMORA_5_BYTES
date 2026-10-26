@@ -16,13 +16,33 @@ export interface MediaItem {
   media_type: MediaType
   prompt: string
   status: MediaStatus
+  is_favorite: boolean
   journal_entry_id: number | null
   journal_entries: MediaJournalEntryRef[]
   summary_id: number | null
+  collection_ids: number[]
   provider: string
   model: string
   created_at: string
   updated_at: string
+}
+
+export interface MediaCollection {
+  id: number
+  name: string
+  description: string
+  item_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface MediaCollectionDetail extends MediaCollection {
+  items: MediaItem[]
+}
+
+export interface CollectionInput {
+  name: string
+  description?: string
 }
 
 export interface GenerateImageInput {

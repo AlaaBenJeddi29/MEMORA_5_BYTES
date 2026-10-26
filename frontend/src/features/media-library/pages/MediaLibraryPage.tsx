@@ -15,8 +15,15 @@ import { journalApi } from '../../../services/journal'
 import { mediaApi } from '../../../services/media'
 import { summariesApi } from '../../../services/summaries'
 import type { JournalEntry } from '../../../types/journal'
-import type { MediaItem, MediaType } from '../../../types/media'
+import type {
+  CollectionInput,
+  MediaCollection,
+  MediaItem,
+  MediaType,
+} from '../../../types/media'
 import type { Summary } from '../../../types/summaries'
+import { CollectionFormDialog } from '../components/CollectionFormDialog'
+import { CollectionsPanel } from '../components/CollectionsPanel'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { GenerateImageForm } from '../components/GenerateImageForm'
 import { MediaCard } from '../components/MediaCard'
@@ -36,12 +43,19 @@ function positiveIntParam(value: string | null): number | null {
 
 function errorMessage(error: unknown, fallback: string): string {
   const normalized = normalizeApiError(error)
-  return normalized.detail ?? normalized.formErrors[0] ?? fallback
+  const fieldMessage = Object.values(normalized.fieldErrors).flat()[0]
+  return (
+    normalized.detail ?? normalized.formErrors[0] ?? fieldMessage ?? fallback
+  )
 }
 
 type LoadState = 'loading' | 'ready' | 'error'
 type TypeFilter = 'all' | MediaType
 type SortOrder = 'newest' | 'oldest'
+type Notice = { tone: 'success' | 'error'; message: string }
+type CollectionDialogState =
+  | { mode: 'create' }
+  | { mode: 'rename'; collection: MediaCollection }
 
 export function MediaLibraryPage() {
   useDocumentTitle('Media library · MEMORA')
@@ -81,7 +95,26 @@ export function MediaLibraryPage() {
   const [deleteTarget, setDeleteTarget] = useState<MediaItem | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
+  const [notice, setNotice] = useState<Notice | null>(null)
+
+  const [collections, setCollections] = useState<MediaCollection[]>([])
+  const [collectionsState, setCollectionsState] = useState<LoadState>('loading')
+  const [collectionsError, setCollectionsError] = useState<string | null>(null)
+  const [collectionsReloadKey, setCollectionsReloadKey] = useState(0)
+  const [activeCollectionId, setActiveCollectionId] = useState<number | null>(null)
+  const [favoritesOnly, setFavoritesOnly] = useState(false)
+  const [favoriteBusyIds, setFavoriteBusyIds] = useState<number[]>([])
+  const [collectionDialog, setCollectionDialog] =
+    useState<CollectionDialogState | null>(null)
+  const [collectionFormBusy, setCollectionFormBusy] = useState(false)
+  const [collectionFormError, setCollectionFormError] = useState<string | null>(null)
+  const [collectionDeleteTarget, setCollectionDeleteTarget] =
+    useState<MediaCollection | null>(null)
+  const [collectionDeleteBusy, setCollectionDeleteBusy] = useState(false)
+  const [collectionDeleteError, setCollectionDeleteError] = useState<string | null>(null)
+  const [membershipBusyIds, setMembershipBusyIds] = useState<number[]>([])
+  const [membershipError, setMembershipError] = useState<string | null>(null)
+  const [removingMediaIds, setRemovingMediaIds] = useState<number[]>([])
 
   useEffect(() => {
     let ignore = false
@@ -162,15 +195,89 @@ export function MediaLibraryPage() {
     }
   }, [summaryReloadKey])
 
+  useEffect(() => {
+    let ignore = false
+    setCollectionsState('loading')
+    setCollectionsError(null)
+
+    mediaApi
+      .listCollections()
+      .then((items) => {
+        if (!ignore) {
+          setCollections(items)
+          setCollectionsState('ready')
+        }
+      })
+      .catch((error: unknown) => {
+        if (!ignore) {
+          setCollectionsError(
+            errorMessage(error, 'Your collections could not be loaded.'),
+          )
+          setCollectionsState('error')
+        }
+      })
+
+    return () => {
+      ignore = true
+    }
+  }, [collectionsReloadKey])
+
   const originalCount = useMemo(
     () => items.filter((item) => item.media_type === 'original').length,
     [items],
   )
   const aiCount = items.length - originalCount
+  const favoriteCount = useMemo(
+    () => items.filter((item) => item.is_favorite).length,
+    [items],
+  )
+  const activeCollection = useMemo(
+    () => collections.find((collection) => collection.id === activeCollectionId) ?? null,
+    [collections, activeCollectionId],
+  )
+  const activeCollectionItemsCount = useMemo(
+    () =>
+      activeCollection
+        ? items.filter((item) =>
+            item.collection_ids.includes(activeCollection.id),
+          ).length
+        : 0,
+    [activeCollection, items],
+  )
+  const activeFavoriteCount = useMemo(
+    () =>
+      activeCollection
+        ? items.filter(
+            (item) =>
+              item.is_favorite &&
+              item.collection_ids.includes(activeCollection.id),
+          ).length
+        : favoriteCount,
+    [activeCollection, favoriteCount, items],
+  )
+
+  useEffect(() => {
+    if (
+      activeCollectionId !== null &&
+      collectionsState === 'ready' &&
+      !collections.some((collection) => collection.id === activeCollectionId)
+    ) {
+      setActiveCollectionId(null)
+    }
+  }, [activeCollectionId, collections, collectionsState])
 
   const visibleItems = useMemo(() => {
     const needle = query.trim().toLowerCase()
     const filtered = items.filter((item) => {
+      if (
+        activeCollectionId !== null &&
+        !item.collection_ids.includes(activeCollectionId)
+      ) {
+        return false
+      }
+      if (favoritesOnly && !item.is_favorite) {
+        return false
+      }
       if (typeFilter !== 'all' && item.media_type !== typeFilter) {
         return false
       }
@@ -194,14 +301,32 @@ export function MediaLibraryPage() {
         new Date(left.created_at).getTime() - new Date(right.created_at).getTime()
       return sortOrder === 'newest' ? -delta : delta
     })
-  }, [items, typeFilter, query, sortOrder])
+  }, [
+    items,
+    activeCollectionId,
+    favoritesOnly,
+    typeFilter,
+    query,
+    sortOrder,
+  ])
 
   const loadErrorMessages = flattenFormErrors(loadErrors)
+  const collectionDeleteMessage = collectionDeleteTarget
+    ? `“${collectionDeleteTarget.name}” will be removed from your collections. ${
+        collectionDeleteTarget.item_count === 0
+          ? 'No images are deleted.'
+          : collectionDeleteTarget.item_count === 1
+            ? 'Its image stays in your library and will not be deleted.'
+            : `Its ${collectionDeleteTarget.item_count} images stay in your library and will not be deleted.`
+      }`
+    : ''
 
   function addMedia(media: MediaItem) {
     setItems((current) => [media, ...current.filter((item) => item.id !== media.id)])
     setLoadState('ready')
     setLoadErrors(EMPTY_ERRORS)
+    setFavoritesOnly(false)
+    setActiveCollectionId(null)
     setNotice(null)
   }
 
@@ -212,8 +337,28 @@ export function MediaLibraryPage() {
     setSelected((current) => (current && current.id === updated.id ? updated : current))
   }
 
+  function patchMedia(id: number, updater: (media: MediaItem) => MediaItem) {
+    setItems((current) =>
+      current.map((item) => (item.id === id ? updater(item) : item)),
+    )
+    setSelected((current) =>
+      current && current.id === id ? updater(current) : current,
+    )
+  }
+
+  function openMedia(media: MediaItem) {
+    setMembershipError(null)
+    setSelected(media)
+  }
+
+  function closeDetail() {
+    setSelected(null)
+    setMembershipError(null)
+  }
+
   function requestDelete(media: MediaItem) {
     setSelected((current) => (current && current.id === media.id ? null : current))
+    setMembershipError(null)
     setDeleteError(null)
     setDeleteTarget(media)
   }
@@ -229,8 +374,21 @@ export function MediaLibraryPage() {
     try {
       await mediaApi.remove(target.id)
       setItems((current) => current.filter((item) => item.id !== target.id))
+      setCollections((current) =>
+        current.map((collection) =>
+          target.collection_ids.includes(collection.id)
+            ? {
+                ...collection,
+                item_count: Math.max(0, collection.item_count - 1),
+              }
+            : collection,
+        ),
+      )
       setDeleteTarget(null)
-      setNotice(`Image #${target.id} was deleted from your library.`)
+      setNotice({
+        tone: 'success',
+        message: `Image #${target.id} was deleted from your library.`,
+      })
     } catch (error) {
       const normalized = normalizeApiError(error)
       setDeleteError(
@@ -243,10 +401,275 @@ export function MediaLibraryPage() {
     }
   }
 
+  async function toggleFavorite(media: MediaItem) {
+    if (favoriteBusyIds.includes(media.id)) {
+      return
+    }
+
+    const nextValue = !media.is_favorite
+    setFavoriteBusyIds((current) => [...current, media.id])
+    patchMedia(media.id, (item) => ({ ...item, is_favorite: nextValue }))
+
+    try {
+      const updated = await mediaApi.setFavorite(media.id, nextValue)
+      handleUpdated(updated)
+      setNotice({
+        tone: 'success',
+        message: nextValue
+          ? `Image #${media.id} added to favorites.`
+          : `Image #${media.id} removed from favorites.`,
+      })
+    } catch (error) {
+      patchMedia(media.id, (item) => ({
+        ...item,
+        is_favorite: media.is_favorite,
+      }))
+      setNotice({
+        tone: 'error',
+        message: errorMessage(
+          error,
+          'We couldn’t update this favorite. Please try again.',
+        ),
+      })
+    } finally {
+      setFavoriteBusyIds((current) =>
+        current.filter((id) => id !== media.id),
+      )
+    }
+  }
+
+  function openCollection(collection: MediaCollection) {
+    setActiveCollectionId(collection.id)
+    setFavoritesOnly(false)
+    setTypeFilter('all')
+    setQuery('')
+  }
+
+  function requestCreateCollection() {
+    setCollectionFormError(null)
+    setCollectionDialog({ mode: 'create' })
+  }
+
+  function requestRenameCollection(collection: MediaCollection) {
+    setCollectionFormError(null)
+    setCollectionDialog({ mode: 'rename', collection })
+  }
+
+  async function submitCollection(input: CollectionInput) {
+    const dialog = collectionDialog
+    if (!dialog) {
+      return
+    }
+
+    setCollectionFormBusy(true)
+    setCollectionFormError(null)
+    try {
+      if (dialog.mode === 'create') {
+        const created = await mediaApi.createCollection(input)
+        setCollections((current) => [created, ...current])
+        setCollectionsState('ready')
+        setCollectionsError(null)
+        setNotice({
+          tone: 'success',
+          message: `Collection “${created.name}” created.`,
+        })
+      } else {
+        const updated = await mediaApi.updateCollection(
+          dialog.collection.id,
+          input,
+        )
+        setCollections((current) =>
+          current.map((collection) =>
+            collection.id === updated.id ? updated : collection,
+          ),
+        )
+        setNotice({
+          tone: 'success',
+          message: `Collection “${updated.name}” updated.`,
+        })
+      }
+      setCollectionDialog(null)
+    } catch (error) {
+      setCollectionFormError(
+        errorMessage(
+          error,
+          'We couldn’t save this collection. Please try again.',
+        ),
+      )
+    } finally {
+      setCollectionFormBusy(false)
+    }
+  }
+
+  function requestDeleteCollection(collection: MediaCollection) {
+    setCollectionDeleteError(null)
+    setCollectionDeleteTarget(collection)
+  }
+
+  async function confirmDeleteCollection() {
+    if (!collectionDeleteTarget) {
+      return
+    }
+
+    const target = collectionDeleteTarget
+    setCollectionDeleteBusy(true)
+    setCollectionDeleteError(null)
+    try {
+      await mediaApi.removeCollection(target.id)
+      setCollections((current) =>
+        current.filter((collection) => collection.id !== target.id),
+      )
+      setItems((current) =>
+        current.map((item) =>
+          item.collection_ids.includes(target.id)
+            ? {
+                ...item,
+                collection_ids: item.collection_ids.filter(
+                  (id) => id !== target.id,
+                ),
+              }
+            : item,
+        ),
+      )
+      setSelected((current) =>
+        current && current.collection_ids.includes(target.id)
+          ? {
+              ...current,
+              collection_ids: current.collection_ids.filter(
+                (id) => id !== target.id,
+              ),
+            }
+          : current,
+      )
+      if (activeCollectionId === target.id) {
+        setActiveCollectionId(null)
+      }
+      setCollectionDeleteTarget(null)
+      setNotice({
+        tone: 'success',
+        message: `Collection “${target.name}” deleted. Its images are still in your library.`,
+      })
+    } catch (error) {
+      setCollectionDeleteError(
+        errorMessage(
+          error,
+          'We couldn’t delete this collection. Please try again.',
+        ),
+      )
+    } finally {
+      setCollectionDeleteBusy(false)
+    }
+  }
+
+  async function toggleCollectionMembership(
+    collection: MediaCollection,
+    media: MediaItem,
+    shouldAdd: boolean,
+  ) {
+    if (membershipBusyIds.includes(collection.id)) {
+      return
+    }
+
+    setMembershipBusyIds((current) => [...current, collection.id])
+    setMembershipError(null)
+    try {
+      if (shouldAdd) {
+        const updated = await mediaApi.addToCollection(collection.id, media.id)
+        handleUpdated(updated)
+        setCollections((current) =>
+          current.map((item) =>
+            item.id === collection.id
+              ? {
+                  ...item,
+                  item_count:
+                    item.item_count +
+                    (media.collection_ids.includes(collection.id) ? 0 : 1),
+                }
+              : item,
+          ),
+        )
+      } else {
+        await mediaApi.removeFromCollection(collection.id, media.id)
+        handleUpdated({
+          ...media,
+          collection_ids: media.collection_ids.filter(
+            (id) => id !== collection.id,
+          ),
+        })
+        setCollections((current) =>
+          current.map((item) =>
+            item.id === collection.id
+              ? {
+                  ...item,
+                  item_count: Math.max(0, item.item_count - 1),
+                }
+              : item,
+          ),
+        )
+      }
+    } catch (error) {
+      setMembershipError(
+        errorMessage(
+          error,
+          'We couldn’t update this collection. Please try again.',
+        ),
+      )
+    } finally {
+      setMembershipBusyIds((current) =>
+        current.filter((id) => id !== collection.id),
+      )
+    }
+  }
+
+  async function removeFromActiveCollection(media: MediaItem) {
+    if (!activeCollection || removingMediaIds.includes(media.id)) {
+      return
+    }
+
+    const collection = activeCollection
+    setRemovingMediaIds((current) => [...current, media.id])
+    try {
+      await mediaApi.removeFromCollection(collection.id, media.id)
+      handleUpdated({
+        ...media,
+        collection_ids: media.collection_ids.filter(
+          (id) => id !== collection.id,
+        ),
+      })
+      setCollections((current) =>
+        current.map((item) =>
+          item.id === collection.id
+            ? {
+                ...item,
+                item_count: Math.max(0, item.item_count - 1),
+              }
+            : item,
+        ),
+      )
+      setNotice({
+        tone: 'success',
+        message: `Image #${media.id} removed from “${collection.name}”. The image is still in your library.`,
+      })
+    } catch (error) {
+      setNotice({
+        tone: 'error',
+        message: errorMessage(
+          error,
+          'We couldn’t remove this image from the collection. Please try again.',
+        ),
+      })
+    } finally {
+      setRemovingMediaIds((current) =>
+        current.filter((id) => id !== media.id),
+      )
+    }
+  }
+
   function resetFilters() {
     setTypeFilter('all')
     setQuery('')
     setSortOrder('newest')
+    setFavoritesOnly(false)
   }
 
   return (
@@ -293,15 +716,32 @@ export function MediaLibraryPage() {
             <dt>AI illustrations</dt>
             <dd>{aiCount}</dd>
           </div>
+          <div className="media-overview__item">
+            <span className="media-overview__icon" aria-hidden="true">
+              <Icon name="heart" size={16} />
+            </span>
+            <dt>Favorites</dt>
+            <dd>{favoriteCount}</dd>
+          </div>
         </dl>
       )}
 
       {notice && (
-        <div className="media-notice" role="status">
+        <div
+          className={
+            notice.tone === 'error'
+              ? 'media-notice media-notice--error'
+              : 'media-notice'
+          }
+          role={notice.tone === 'error' ? 'alert' : 'status'}
+        >
           <span className="media-notice__icon" aria-hidden="true">
-            <Icon name="check" size={15} />
+            <Icon
+              name={notice.tone === 'error' ? 'alert' : 'check'}
+              size={15}
+            />
           </span>
-          <span>{notice}</span>
+          <span>{notice.message}</span>
           <button
             type="button"
             className="media-notice__dismiss"
@@ -312,15 +752,58 @@ export function MediaLibraryPage() {
         </div>
       )}
 
+      <CollectionsPanel
+        collections={collections}
+        loading={collectionsState === 'loading'}
+        error={collectionsState === 'error' ? collectionsError : null}
+        activeCollectionId={activeCollectionId}
+        onRetry={() => setCollectionsReloadKey((key) => key + 1)}
+        onCreate={requestCreateCollection}
+        onOpen={openCollection}
+        onRename={requestRenameCollection}
+        onDelete={requestDeleteCollection}
+      />
+
       <section className="media-gallery" aria-labelledby="media-gallery-heading">
         <div className="media-gallery-head">
           <div>
-            <p className="eyebrow">Collection</p>
-            <h2 id="media-gallery-heading">Your gallery</h2>
+            {activeCollection ? (
+              <>
+                <p className="eyebrow">Collection view</p>
+                <nav className="media-breadcrumb" aria-label="Gallery scope">
+                  <button
+                    type="button"
+                    className="media-breadcrumb__back"
+                    onClick={() => setActiveCollectionId(null)}
+                  >
+                    <Icon name="arrowLeft" size={14} />
+                    All media
+                  </button>
+                  <Icon
+                    name="chevronRight"
+                    size={12}
+                    className="media-breadcrumb__sep"
+                  />
+                  <span aria-current="page">{activeCollection.name}</span>
+                </nav>
+                <h2 id="media-gallery-heading">{activeCollection.name}</h2>
+                <p className="media-gallery-desc">
+                  {activeCollection.description ||
+                    'Images grouped in this collection.'}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="eyebrow">Collection</p>
+                <h2 id="media-gallery-heading">Your gallery</h2>
+              </>
+            )}
           </div>
           {items.length > 0 && (
             <p className="media-filter-count" role="status">
-              {visibleItems.length} of {items.length} shown
+              {visibleItems.length} of{' '}
+              {activeCollection ? activeCollectionItemsCount : items.length}{' '}
+              shown
             </p>
           )}
         </div>
@@ -374,6 +857,26 @@ export function MediaLibraryPage() {
                 </select>
               )}
             </FormField>
+
+            <div className="media-toolbar__favorites">
+              <span className="media-toolbar__label">View</span>
+              <button
+                type="button"
+                className={
+                  favoritesOnly
+                    ? 'media-favorite-filter is-active'
+                    : 'media-favorite-filter'
+                }
+                aria-pressed={favoritesOnly}
+                onClick={() => setFavoritesOnly((value) => !value)}
+              >
+                <Icon name="heart" size={15} />
+                Favorites only
+                <span className="media-favorite-filter__count">
+                  {favoriteCount}
+                </span>
+              </button>
+            </div>
           </div>
         )}
 
@@ -418,18 +921,73 @@ export function MediaLibraryPage() {
           />
         )}
 
-        {loadState === 'ready' && items.length > 0 && visibleItems.length === 0 && (
-          <EmptyState
-            icon="search"
-            title="No media matches these filters"
-            description="Try a different search term, or reset the filters to see everything."
-            actions={
-              <Button variant="secondary" onClick={resetFilters}>
-                Reset filters
-              </Button>
-            }
-          />
-        )}
+        {loadState === 'ready' &&
+          items.length > 0 &&
+          activeCollection &&
+          activeCollectionItemsCount === 0 && (
+            <EmptyState
+              icon="folder"
+              title="This collection is empty"
+              description="Open any image, then use its Collections section to add it here. Deleting a collection never deletes its images."
+              actions={
+                <Button
+                  variant="secondary"
+                  onClick={() => setActiveCollectionId(null)}
+                >
+                  <Icon name="arrowLeft" size={15} />
+                  Back to all media
+                </Button>
+              }
+            />
+          )}
+
+        {loadState === 'ready' &&
+          items.length > 0 &&
+          favoritesOnly &&
+          !query.trim() &&
+          typeFilter === 'all' &&
+          activeFavoriteCount === 0 && (
+            <EmptyState
+              icon="heart"
+              title={
+                activeCollection
+                  ? 'No favorites in this collection'
+                  : 'No favorites yet'
+              }
+              description="Use the heart on any image to keep it in your favorites. Favorites are private to your account."
+              actions={
+                <Button
+                  variant="secondary"
+                  onClick={() => setFavoritesOnly(false)}
+                >
+                  <Icon name="grid" size={15} />
+                  Show all images
+                </Button>
+              }
+            />
+          )}
+
+        {loadState === 'ready' &&
+          items.length > 0 &&
+          visibleItems.length === 0 &&
+          !(activeCollection && activeCollectionItemsCount === 0) &&
+          !(
+            favoritesOnly &&
+            !query.trim() &&
+            typeFilter === 'all' &&
+            activeFavoriteCount === 0
+          ) && (
+            <EmptyState
+              icon="search"
+              title="No media matches these filters"
+              description="Try a different search term, or reset the filters to see everything."
+              actions={
+                <Button variant="secondary" onClick={resetFilters}>
+                  Reset filters
+                </Button>
+              }
+            />
+          )}
 
         {loadState === 'ready' && visibleItems.length > 0 && (
           <ul className="media-grid">
@@ -437,8 +995,17 @@ export function MediaLibraryPage() {
               <MediaCard
                 key={media.id}
                 media={media}
-                onOpen={(item) => setSelected(item)}
+                favoriteBusy={favoriteBusyIds.includes(media.id)}
+                removeBusy={removingMediaIds.includes(media.id)}
+                activeCollectionName={activeCollection?.name}
+                onOpen={openMedia}
                 onDelete={requestDelete}
+                onToggleFavorite={(item) => void toggleFavorite(item)}
+                onRemoveFromCollection={
+                  activeCollection
+                    ? (item) => void removeFromActiveCollection(item)
+                    : undefined
+                }
               />
             ))}
           </ul>
@@ -476,7 +1043,7 @@ export function MediaLibraryPage() {
                 </p>
               </div>
             </div>
-            <UploadForm onUploaded={addMedia} onView={(media) => setSelected(media)} />
+            <UploadForm onUploaded={addMedia} onView={openMedia} />
             <aside className="media-privacy-note">
               <span className="media-privacy-note__icon" aria-hidden="true">
                 <Icon name="lock" size={16} />
@@ -522,7 +1089,7 @@ export function MediaLibraryPage() {
               initialJournalEntryId={initialJournalEntryId}
               initialSummaryId={initialSummaryId}
               onGenerated={addMedia}
-              onView={(media) => setSelected(media)}
+              onView={openMedia}
             />
           </section>
         </div>
@@ -532,9 +1099,21 @@ export function MediaLibraryPage() {
         <MediaDetailDialog
           key={selected.id}
           media={selected}
-          onClose={() => setSelected(null)}
+          collections={collections}
+          collectionsLoading={collectionsState === 'loading'}
+          collectionsError={
+            collectionsState === 'error' ? collectionsError : null
+          }
+          favoriteBusy={favoriteBusyIds.includes(selected.id)}
+          membershipBusyIds={membershipBusyIds}
+          membershipError={membershipError}
+          onClose={closeDetail}
           onUpdated={handleUpdated}
           onDelete={requestDelete}
+          onToggleFavorite={(item) => void toggleFavorite(item)}
+          onToggleCollection={(collection, media, shouldAdd) =>
+            void toggleCollectionMembership(collection, media, shouldAdd)
+          }
         />
       )}
 
@@ -551,6 +1130,49 @@ export function MediaLibraryPage() {
             if (!deleteBusy) {
               setDeleteTarget(null)
               setDeleteError(null)
+            }
+          }}
+        />
+      )}
+
+      {collectionDialog && (
+        <CollectionFormDialog
+          key={
+            collectionDialog.mode === 'rename'
+              ? `rename-${collectionDialog.collection.id}`
+              : 'create'
+          }
+          mode={collectionDialog.mode}
+          collection={
+            collectionDialog.mode === 'rename'
+              ? collectionDialog.collection
+              : undefined
+          }
+          busy={collectionFormBusy}
+          error={collectionFormError}
+          onSubmit={(input) => void submitCollection(input)}
+          onCancel={() => {
+            if (!collectionFormBusy) {
+              setCollectionDialog(null)
+              setCollectionFormError(null)
+            }
+          }}
+        />
+      )}
+
+      {collectionDeleteTarget && (
+        <ConfirmDialog
+          title="Delete this collection?"
+          message={collectionDeleteMessage}
+          confirmLabel="Delete collection"
+          busyLabel="Deleting…"
+          busy={collectionDeleteBusy}
+          error={collectionDeleteError}
+          onConfirm={() => void confirmDeleteCollection()}
+          onCancel={() => {
+            if (!collectionDeleteBusy) {
+              setCollectionDeleteTarget(null)
+              setCollectionDeleteError(null)
             }
           }}
         />

@@ -20,7 +20,7 @@ from .journal_context import (
     build_journal_prompt,
     get_journal_entry,
 )
-from .models import MediaFile
+from .models import MediaCollection, MediaFile
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +81,8 @@ class MediaFileSerializer(serializers.ModelSerializer):
     summary_id = serializers.IntegerField(read_only=True)
     provider = serializers.CharField(read_only=True)
     model = serializers.CharField(read_only=True)
+    is_favorite = serializers.BooleanField(read_only=True)
+    collection_ids = serializers.SerializerMethodField()
 
     class Meta:
         model = MediaFile
@@ -90,9 +92,11 @@ class MediaFileSerializer(serializers.ModelSerializer):
             "media_type",
             "prompt",
             "status",
+            "is_favorite",
             "journal_entry_id",
             "journal_entries",
             "summary_id",
+            "collection_ids",
             "provider",
             "model",
             "created_at",
@@ -103,9 +107,11 @@ class MediaFileSerializer(serializers.ModelSerializer):
             "media_type",
             "prompt",
             "status",
+            "is_favorite",
             "journal_entry_id",
             "journal_entries",
             "summary_id",
+            "collection_ids",
             "provider",
             "model",
             "created_at",
@@ -115,6 +121,9 @@ class MediaFileSerializer(serializers.ModelSerializer):
     def get_journal_entry_id(self, obj):
         entries = list(obj.journal_entries.all())
         return entries[0].pk if entries else None
+
+    def get_collection_ids(self, obj):
+        return [collection.pk for collection in obj.collections.all()]
 
     def validate_file(self, value):
         max_bytes = settings.MEDIA_IMAGE_MAX_BYTES
@@ -209,6 +218,82 @@ class MediaFileDetailSerializer(MediaFileSerializer):
             "created_at",
             "updated_at",
         ]
+
+
+class FavoriteUpdateSerializer(serializers.Serializer):
+    is_favorite = serializers.BooleanField(required=True)
+
+
+class MediaCollectionSerializer(serializers.ModelSerializer):
+    """Collection metadata with a lightweight item count for list responses."""
+
+    name = serializers.CharField(max_length=80, trim_whitespace=True)
+    description = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=500,
+        trim_whitespace=True,
+        default="",
+    )
+    item_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MediaCollection
+        fields = [
+            "id",
+            "name",
+            "description",
+            "item_count",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "item_count", "created_at", "updated_at"]
+
+    def get_item_count(self, obj):
+        # `items` is prefetched by the views; len() reuses that cache.
+        return len(obj.items.all())
+
+    def validate_name(self, value):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if user is None or not getattr(user, "is_authenticated", False):
+            return value
+
+        duplicates = MediaCollection.objects.filter(
+            owner=user,
+            name__iexact=value,
+        )
+        if self.instance is not None:
+            duplicates = duplicates.exclude(pk=self.instance.pk)
+        if duplicates.exists():
+            raise serializers.ValidationError(
+                "You already have a collection with this name."
+            )
+        return value
+
+
+class MediaCollectionDetailSerializer(MediaCollectionSerializer):
+    """Collection metadata plus the caller's real media in the collection."""
+
+    items = MediaFileSerializer(many=True, read_only=True)
+
+    class Meta(MediaCollectionSerializer.Meta):
+        fields = MediaCollectionSerializer.Meta.fields + ["items"]
+
+
+class CollectionItemSerializer(serializers.Serializer):
+    """Validate a media reference against the authenticated owner."""
+
+    media_id = serializers.IntegerField(min_value=1)
+
+    def validate_media_id(self, value):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if user is None or not getattr(user, "is_authenticated", False):
+            raise serializers.ValidationError("Authentication is required.")
+        if not MediaFile.objects.filter(pk=value, owner=user).exists():
+            raise serializers.ValidationError("Media not found.")
+        return value
 
 
 class GenerateImageSerializer(serializers.Serializer):
