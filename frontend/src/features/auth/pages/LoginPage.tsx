@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Alert } from '../../../components/Alert'
 import { Button } from '../../../components/Button'
 import { FormField } from '../../../components/FormField'
+import { Icon } from '../../../components/Icon'
 import { PasswordInput } from '../../../components/PasswordInput'
 import { TextInput } from '../../../components/TextInput'
 import { useDocumentTitle } from '../../../hooks/useDocumentTitle'
@@ -57,9 +58,12 @@ export function LoginPage() {
   }
 
   return (
-    <section className="auth-card" aria-labelledby="login-heading">
-      <h1 id="login-heading">Sign in</h1>
-      <p className="muted">Welcome back. Sign in to reach your journal.</p>
+    <section className="auth-form" aria-labelledby="login-heading">
+      <p className="eyebrow">Welcome back</p>
+      <h1 id="login-heading">Sign in to your journal</h1>
+      <p className="auth-form__lede">
+        Pick up where you left off. Your pages are waiting exactly as you left them.
+      </p>
 
       {formMessages.length > 0 && (
         <Alert variant="error" title="We couldn’t sign you in">
@@ -71,13 +75,14 @@ export function LoginPage() {
         </Alert>
       )}
 
-      <form className="form" onSubmit={handleSubmit} noValidate>
+      <form className="form auth-form__fields" onSubmit={handleSubmit} noValidate>
         <FormField label="Username" required error={errors.fieldErrors.username?.[0]}>
           {(field) => (
             <TextInput
               {...field}
               name="username"
               autoComplete="username"
+              placeholder="Your username"
               required
               value={username}
               onChange={(event) => setUsername(event.target.value)}
@@ -91,6 +96,7 @@ export function LoginPage() {
               {...field}
               name="password"
               autoComplete="current-password"
+              placeholder="Your password"
               required
               value={password}
               onChange={(event) => setPassword(event.target.value)}
@@ -103,8 +109,13 @@ export function LoginPage() {
         </Button>
       </form>
 
-      <p className="auth-links muted">
+      <p className="auth-form__switch">
         No account yet? <Link to="/register">Create one</Link>.
+      </p>
+
+      <p className="auth-form__note">
+        <Icon name="lock" size={14} />
+        Sign-in uses a private Django session with CSRF protection.
       </p>
     </section>
   )

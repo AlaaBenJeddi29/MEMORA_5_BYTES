@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ person.name }} - MEMORA{% endblock %}
+
+{% block content %}
+<p><a href="{% url 'people:person_list' %}">Retour aux personnes</a></p>
+
+<h1>{{ person.name }}</h1>
+
+{% if person.avatar %}
+    <p><img src="{{ person.avatar.url }}" alt="{{ person.name }}" class="thumb"></p>
+{% endif %}
+
+<p><a href="{% url 'people:person_edit' person.pk %}">Modifier</a></p>
+
+<form method="post">
+    {% csrf_token %}
+    <button type="submit" onclick="return confirm('Supprimer cette personne ?');">Supprimer</button>
+</form>
+
+<h2>Photos où {{ person.name }} apparaît</h2>
+
+<div class="grid">
+    {% for face in faces %}
+        <div class="card thumb">
+            <a href="{% url 'people:photo_detail' face.photo.pk %}">
+                {% if face.face_crop %}
+                    <img src="{{ face.face_crop.url }}" alt="Visage de {{ person.name }}">
+                {% else %}
+                    <img src="{{ face.photo.file.url }}" alt="Photo">
+                {% endif %}
+            </a>
+            <p>Photo #{{ face.photo.pk }}</p>
+        </div>
+    {% empty %}
+        <p>Aucune photo pour cette personne.</p>
+    {% endfor %}
+</div>
+{% endblock %}

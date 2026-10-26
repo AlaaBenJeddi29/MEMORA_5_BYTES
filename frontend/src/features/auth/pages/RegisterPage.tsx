@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Alert } from '../../../components/Alert'
 import { Button } from '../../../components/Button'
 import { FormField } from '../../../components/FormField'
+import { Icon } from '../../../components/Icon'
 import { PasswordInput } from '../../../components/PasswordInput'
 import { TextInput } from '../../../components/TextInput'
 import { useDocumentTitle } from '../../../hooks/useDocumentTitle'
@@ -64,9 +65,12 @@ export function RegisterPage() {
   }
 
   return (
-    <section className="auth-card" aria-labelledby="register-heading">
-      <h1 id="register-heading">Create your account</h1>
-      <p className="muted">Your journal is private to you.</p>
+    <section className="auth-form" aria-labelledby="register-heading">
+      <p className="eyebrow">Begin here</p>
+      <h1 id="register-heading">Create your journal</h1>
+      <p className="auth-form__lede">
+        A private account for one. No feed, no followers — just the memories you choose to keep.
+      </p>
 
       {formMessages.length > 0 && (
         <Alert variant="error" title="We couldn’t create your account">
@@ -78,13 +82,14 @@ export function RegisterPage() {
         </Alert>
       )}
 
-      <form className="form" onSubmit={handleSubmit} noValidate>
+      <form className="form auth-form__fields" onSubmit={handleSubmit} noValidate>
         <FormField label="Username" required error={errors.fieldErrors.username?.[0]}>
           {(field) => (
             <TextInput
               {...field}
               name="username"
               autoComplete="username"
+              placeholder="Choose a username"
               required
               value={username}
               onChange={(event) => setUsername(event.target.value)}
@@ -99,6 +104,7 @@ export function RegisterPage() {
               name="email"
               type="email"
               autoComplete="email"
+              placeholder="you@example.com"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
             />
@@ -111,6 +117,7 @@ export function RegisterPage() {
               {...field}
               name="password"
               autoComplete="new-password"
+              placeholder="Choose something only you know"
               required
               value={password}
               onChange={(event) => setPassword(event.target.value)}
@@ -124,6 +131,7 @@ export function RegisterPage() {
               {...field}
               name="password_confirm"
               autoComplete="new-password"
+              placeholder="Type it once more"
               required
               value={passwordConfirm}
               onChange={(event) => setPasswordConfirm(event.target.value)}
@@ -136,8 +144,13 @@ export function RegisterPage() {
         </Button>
       </form>
 
-      <p className="auth-links muted">
+      <p className="auth-form__switch">
         Already have an account? <Link to="/login">Sign in</Link>.
+      </p>
+
+      <p className="auth-form__note">
+        <Icon name="shield" size={14} />
+        Your journal, people and photos stay scoped to your account.
       </p>
     </section>
   )

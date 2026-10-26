@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { JournalSearchParams, AdvancedSearchParams } from '../../../types/journal'
 import { Button } from '../../../components/Button'
 import { FormField } from '../../../components/FormField'
+import { Icon } from '../../../components/Icon'
 import { TextInput } from '../../../components/TextInput'
 
 export interface JournalSearchProps {
@@ -46,18 +47,28 @@ export function JournalSearch({ onSearch, isLoading = false }: JournalSearchProp
   }
 
   return (
-    <form onSubmit={handleSubmit} className="journal-search">
+    <form onSubmit={handleSubmit} className="journal-search" role="search">
+      <div className="journal-search__head">
+        <span className="journal-search__icon" aria-hidden="true">
+          <Icon name="search" size={18} />
+        </span>
+        <div>
+          <h2 className="journal-search__title">Find a page</h2>
+          <p className="journal-search__hint">Search by title, or widen the dates.</p>
+        </div>
+      </div>
+
       <div className="search-fields">
         <FormField label="Search by title">
           {(field) => (
             <TextInput
               {...field}
               name="q"
-              type="text"
+              type="search"
               value={q}
               onChange={(e) => setQ(e.target.value)}
               disabled={isLoading}
-              placeholder="Journal entry title..."
+              placeholder="Journal entry title…"
             />
           )}
         </FormField>
@@ -122,10 +133,11 @@ export function JournalSearch({ onSearch, isLoading = false }: JournalSearchProp
       </div>
 
       <div className="search-actions">
-        <Button type="submit" disabled={isLoading}>
-          Search
+        <Button type="submit" size="sm" disabled={isLoading}>
+          <Icon name="search" size={15} />
+          {isLoading ? 'Searching…' : 'Search'}
         </Button>
-        <Button type="button" onClick={handleClear} disabled={isLoading} variant="secondary">
+        <Button type="button" onClick={handleClear} disabled={isLoading} variant="secondary" size="sm">
           Clear
         </Button>
       </div>

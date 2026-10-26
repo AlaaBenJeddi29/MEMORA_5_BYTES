@@ -1,0 +1,69 @@
+{% extends 'base.html' %}
+
+{% block title %}Photo #{{ photo.pk }} - MEMORA{% endblock %}
+
+{% block content %}
+<p><a href="{% url 'people:photo_list' %}">Retour aux photos</a></p>
+
+<h1>Photo #{{ photo.pk }}</h1>
+
+<p><img src="{{ photo.file.url }}" alt="Photo {{ photo.pk }}" style="max-width: 100%;"></p>
+
+<form method="post" action="{% url 'people:photo_delete' photo.pk %}">
+    {% csrf_token %}
+    <button type="submit" onclick="return confirm('Supprimer cette photo ?');">Supprimer cette photo</button>
+</form>
+
+<h2>Visages détectés</h2>
+
+{% for face in faces %}
+    <div class="card">
+        {% if face.face_crop %}
+            <img src="{{ face.face_crop.url }}" alt="Visage détecté" style="width: 120px;">
+        {% endif %}
+
+        <p>
+            {% if face.person %}
+                Personne : <strong>{{ face.person.name }}</strong>
+            {% else %}
+                Aucune personne associée
+            {% endif %}
+        </p>
+
+        {% if face.suggested_person %}
+            <p>
+                Suggestion : {{ face.suggested_person.name }}
+                {% if face.distance != None %}(distance : {{ face.distance|floatformat:3 }}){% endif %}
+            </p>
+            <form method="post" action="{% url 'people:face_confirm' face.pk %}">
+                {% csrf_token %}
+                <button type="submit">Confirmer</button>
+            </form>
+        {% endif %}
+
+        <form method="post" action="{% url 'people:face_assign' face.pk %}">
+            {% csrf_token %}
+            <p>
+                <label>Associer à :
+                    <select name="person">
+                        <option value="">-- Aucune --</option>
+                        {% for person in people %}
+                            <option value="{{ person.pk }}" {% if face.person_id == person.pk %}selected{% endif %}>
+                                {{ person.name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </label>
+            </p>
+            <button type="submit">Enregistrer</button>
+        </form>
+
+        <form method="post" action="{% url 'people:face_delete' face.pk %}">
+            {% csrf_token %}
+            <button type="submit" onclick="return confirm('Retirer ce visage ?');">Retirer ce visage</button>
+        </form>
+    </div>
+{% empty %}
+    <p>Aucun visage détecté.</p>
+{% endfor %}
+{% endblock %}

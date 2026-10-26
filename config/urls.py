@@ -4,6 +4,7 @@ Root URL configuration for the MEMORA project.
 Everything is mounted from here:
 
     /admin/            Django's built-in admin site
+    /people/           HTML pages for the people module (temporary)
     /api/accounts/     accounts app
     /api/journal/      journal app
     /api/audio/        audio app
@@ -24,16 +25,22 @@ from django.urls import include, path
 urlpatterns = [
     path("admin/", admin.site.urls),
 
+    # HTML pages for the people module (testing before the React API).
+    path("people/", include("apps.people.urls")),
+
     # API routes, one namespace per app.
     path("api/accounts/", include("apps.accounts.urls")),
     path("api/journal/", include("apps.journal.urls")),
     path("api/audio/", include("apps.audio.urls")),
     path("api/summaries/", include("apps.summaries.urls")),
     path("api/media/", include("apps.media_library.urls")),
-    path("api/people/", include("apps.people.urls")),
+    path("api/people/", include("apps.people.api_urls")),
 ]
 
 # While DEBUG = True, let Django serve uploaded media files during
 # development. In production a real web server or cloud storage does this.
+# WARNING: this development route is NOT authenticated. Media URLs are
+# unguessable capability URLs, not owner-scoped access control; see
+# docs/API_CONTRACT.md §3.5 and §4.11 before exposing media elsewhere.
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

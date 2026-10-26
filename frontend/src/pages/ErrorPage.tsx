@@ -2,9 +2,11 @@ import { Link, isRouteErrorResponse, useRouteError } from 'react-router-dom'
 
 import { Brand } from '../components/Brand'
 import { Button } from '../components/Button'
+import { Icon } from '../components/Icon'
 import { SkipLink } from '../components/SkipLink'
 import { StatusBadge } from '../components/StatusBadge'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
+import './state-page.css'
 
 function getErrorInfo(error: unknown): { title: string; detail: string } {
   if (isRouteErrorResponse(error)) {
@@ -40,13 +42,20 @@ export function ErrorPage() {
       </header>
 
       <main id="main" className="container layout__main error-main" tabIndex={-1}>
-        <div className="state-page">
+        <div className="state-page state-page--panel state-page--error">
+          <span className="state-page__icon" aria-hidden="true">
+            <Icon name="alert" size={26} />
+          </span>
           <StatusBadge status="failed">Error</StatusBadge>
           <h1>{title}</h1>
-          <p className="muted">{detail}</p>
+          <p className="muted state-page__detail">{detail}</p>
           <div className="state-page__actions">
-            <Button onClick={() => window.location.reload()}>Reload</Button>
+            <Button onClick={() => window.location.reload()}>
+              <Icon name="refresh" size={15} />
+              Reload
+            </Button>
             <Link className="btn btn--secondary" to="/">
+              <Icon name="home" size={15} />
               Go home
             </Link>
           </div>

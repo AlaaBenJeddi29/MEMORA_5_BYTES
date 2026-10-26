@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+
+{% block title %}Photos - MEMORA{% endblock %}
+
+{% block content %}
+<h1>Mes photos</h1>
+
+<div class="card">
+    <h2>Ajouter une photo</h2>
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <p>
+            <label>Photo :
+                <input type="file" name="photo" accept="image/*" required>
+            </label>
+        </p>
+        <button type="submit">Envoyer</button>
+    </form>
+</div>
+
+<div class="grid">
+    {% for photo in photos %}
+        <div class="card thumb">
+            <a href="{% url 'people:photo_detail' photo.pk %}">
+                <img src="{{ photo.file.url }}" alt="Photo {{ photo.pk }}">
+            </a>
+            <p>Photo #{{ photo.pk }} - {{ photo.faces.count }} visage(s)</p>
+            <p>{{ photo.created_at|date:"d/m/Y H:i" }}</p>
+            <form method="post" action="{% url 'people:photo_delete' photo.pk %}">
+                {% csrf_token %}
+                <button type="submit" onclick="return confirm('Supprimer cette photo ?');">Supprimer</button>
+            </form>
+        </div>
+    {% empty %}
+        <p>Aucune photo pour le moment.</p>
+    {% endfor %}
+</div>
+{% endblock %}

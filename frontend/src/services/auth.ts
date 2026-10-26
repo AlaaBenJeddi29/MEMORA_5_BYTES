@@ -6,8 +6,8 @@ import { apiRequest } from './apiClient'
  * exist today; see docs/API_CONTRACT.md §2.
  */
 export const authApi = {
-  /** GET /api/accounts/me/ — the current session's user (403 when signed out). */
-  me: () => apiRequest<User>('/api/accounts/me/'),
+  /** GET /api/accounts/me/ — the user, or 204 (null) when signed out. */
+  me: () => apiRequest<User | null>('/api/accounts/me/'),
 
   /** GET /api/accounts/csrf/ — ensures the `csrftoken` cookie is set. */
   csrf: () => apiRequest<{ detail: string }>('/api/accounts/csrf/'),

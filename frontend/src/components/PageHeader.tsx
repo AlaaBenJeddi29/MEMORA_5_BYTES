@@ -4,17 +4,20 @@ export type PageHeaderProps = {
   /** Rendered as the page's single `<h1>`. */
   title: string
   description?: string
+  /** Small uppercase line above the title. */
+  eyebrow?: string
   /** Optional status badge shown next to the title. */
   badge?: ReactNode
   /** Optional actions, e.g. a primary button. */
   actions?: ReactNode
 }
 
-/** Consistent page heading block: title, optional badge, description, actions. */
-export function PageHeader({ title, description, badge, actions }: PageHeaderProps) {
+/** Consistent page heading block: eyebrow, title, optional badge, description, actions. */
+export function PageHeader({ title, description, eyebrow, badge, actions }: PageHeaderProps) {
   return (
     <header className="page-header">
       <div className="page-header__text">
+        {eyebrow && <p className="eyebrow">{eyebrow}</p>}
         <div className="page-header__title-row">
           <h1 className="page-header__title">{title}</h1>
           {badge}

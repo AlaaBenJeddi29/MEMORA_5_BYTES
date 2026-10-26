@@ -27,6 +27,22 @@ describe('normalizeApiError', () => {
     expect(normalizeApiError(error).detail).toBe('CSRF Failed: CSRF token missing.')
   })
 
+  it('never renders a raw non-JSON 5xx body', () => {
+    const error = new ApiError(500, '<html>Traceback: SECRET internal path</html>')
+
+    expect(normalizeApiError(error).formErrors).toEqual([
+      'The server ran into a problem. Please try again.',
+    ])
+  })
+
+  it('keeps a plain-text 4xx message', () => {
+    const error = new ApiError(400, 'Choose a JPEG, PNG, or WebP image.')
+
+    expect(normalizeApiError(error).formErrors).toEqual([
+      'Choose a JPEG, PNG, or WebP image.',
+    ])
+  })
+
   it('falls back to a readable message for an empty body', () => {
     expect(normalizeApiError(new ApiError(403, null)).formErrors).toEqual([
       'You are not signed in, or you do not have access.',
