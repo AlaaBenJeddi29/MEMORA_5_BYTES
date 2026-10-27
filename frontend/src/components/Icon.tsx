@@ -56,6 +56,7 @@ export type IconName =
   | 'sun'
   | 'tag'
   | 'trash'
+  | 'universalAccess'
   | 'upload'
   | 'user'
   | 'users'
@@ -278,6 +279,14 @@ const PATHS: Record<IconName, ReactNode> = {
     <>
       <path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13" />
       <path d="M10 11v5M14 11v5" />
+    </>
+  ),
+  universalAccess: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <circle cx="12" cy="7.5" r="1.5" />
+      <path d="M6.6 10.2c1.8.6 3.6.9 5.4.9s3.6-.3 5.4-.9" />
+      <path d="M12 11.1v3.2M12 14.3l-2.1 4M12 14.3l2.1 4" />
     </>
   ),
   upload: (

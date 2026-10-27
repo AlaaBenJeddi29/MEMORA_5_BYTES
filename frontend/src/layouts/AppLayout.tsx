@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 
+import { AccessibilitySettingsDialog } from '../components/AccessibilitySettingsDialog'
 import { Alert } from '../components/Alert'
 import { Brand } from '../components/Brand'
 import { Icon, type IconName } from '../components/Icon'
@@ -62,10 +63,12 @@ function SidebarContent({
   user,
   onNavigate,
   onLogout,
+  onOpenAccessibility,
 }: {
   user: User | null
   onNavigate?: () => void
   onLogout: () => void
+  onOpenAccessibility: () => void
 }) {
   const username = user?.username ?? 'Your account'
 
@@ -102,6 +105,18 @@ function SidebarContent({
                 <Icon name="user" size={17} />
                 My account
               </NavLink>
+            </li>
+            <li>
+              <button
+                type="button"
+                className="side-nav__link side-nav__link--button"
+                aria-label="Accessibility settings"
+                data-a11y-settings-trigger
+                onClick={onOpenAccessibility}
+              >
+                <Icon name="universalAccess" size={17} />
+                Accessibility
+              </button>
             </li>
             {user?.is_staff && (
               <li>
@@ -141,9 +156,12 @@ export function AppLayout() {
   const location = useLocation()
 
   const [menuOpen, setMenuOpen] = useState(false)
+  const [a11yOpen, setA11yOpen] = useState(false)
   const [logoutError, setLogoutError] = useState<string | null>(null)
   const drawerRef = useRef<HTMLElement>(null)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
+  const a11yOpenRef = useRef(false)
+  a11yOpenRef.current = a11yOpen
 
   const username = user?.username ?? 'Your account'
   const currentSection = sectionLabel(location.pathname)
@@ -172,6 +190,11 @@ export function AppLayout() {
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
+        // The settings dialog owns Escape while it is open, and it hands focus
+        // back to the sidebar trigger itself.
+        if (a11yOpenRef.current) {
+          return
+        }
         setMenuOpen(false)
         menuButtonRef.current?.focus()
       }
@@ -187,7 +210,11 @@ export function AppLayout() {
 
       {isDesktop && (
         <aside className="app-sidebar" aria-label="Sidebar">
-          <SidebarContent user={user} onLogout={() => void handleLogout()} />
+          <SidebarContent
+            user={user}
+            onLogout={() => void handleLogout()}
+            onOpenAccessibility={() => setA11yOpen(true)}
+          />
         </aside>
       )}
 
@@ -210,6 +237,7 @@ export function AppLayout() {
               user={user}
               onNavigate={() => setMenuOpen(false)}
               onLogout={() => void handleLogout()}
+              onOpenAccessibility={() => setA11yOpen(true)}
             />
           </aside>
         </>
@@ -278,6 +306,8 @@ export function AppLayout() {
           <Outlet />
         </main>
       </div>
+
+      <AccessibilitySettingsDialog open={a11yOpen} onClose={() => setA11yOpen(false)} />
     </div>
   )
 }

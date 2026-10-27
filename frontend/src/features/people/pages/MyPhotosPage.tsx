@@ -52,14 +52,6 @@ export function MyPhotosPage() {
         description="Vos photos et le nombre de visages détectés. Lecture seule."
       />
 
-      <Alert variant="info" title="Ajout de photos">
-        Cette page ne gère pas l’upload. Ajoutez une photo depuis la page HTML{' '}
-        <a href="/people/photos/">
-          <code>/people/photos/</code>
-        </a>
-        , puis revenez ici pour taguer les visages.
-      </Alert>
-
       <section className="photos-section" aria-labelledby="photos-heading">
         <div className="photos-section__head">
           <div>

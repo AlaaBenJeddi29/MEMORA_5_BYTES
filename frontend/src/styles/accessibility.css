@@ -1,0 +1,572 @@
+/* ==================================================================
+   Accessibility settings
+
+   `hooks/useAccessibility.ts` writes these attributes on <html>; this
+   file is what actually changes the page. `index.html` applies the same
+   attributes from localStorage before the first paint, so a refresh in
+   a non-default size or contrast mode never flashes.
+   ================================================================== */
+
+/* ------------------------------------------------------------------ *
+ * 1. Text size — scales the root, so every rem-based token follows
+ * ------------------------------------------------------------------ */
+html[data-text-size='default'] {
+  font-size: 100%;
+}
+
+html[data-text-size='large'] {
+  font-size: 115%;
+}
+
+html[data-text-size='xl'] {
+  font-size: 130%;
+}
+
+/* ------------------------------------------------------------------ *
+ * 2. High contrast — dark ink, plain surfaces, 2px borders
+ * ------------------------------------------------------------------ */
+html[data-contrast='high'] {
+  --bg: #ffffff;
+  --paper: #ffffff;
+  --paper-2: #ffffff;
+  --paper-3: #f0f0f0;
+  --surface: #ffffff;
+  --surface-muted: #ffffff;
+  --surface-sunken: #ffffff;
+
+  --border: #24182d;
+  --border-strong: #24182d;
+
+  --ink: #1a1020;
+  --ink-soft: #3a2f42;
+  --text: #1a1020;
+  --text-muted: #3a2f42;
+
+  --plum: #24182d;
+  --plum-deep: #1a1020;
+  --plum-soft: #24182d;
+  --lavender: #24182d;
+  --lavender-strong: #24182d;
+  --lilac: #ffffff;
+  --lilac-soft: #ffffff;
+  --sage: #24182d;
+  --sage-soft: #ffffff;
+
+  --primary: #24182d;
+  --primary-strong: #1a1020;
+  --primary-soft: #ffffff;
+  --primary-contrast: #ffffff;
+  --accent: #24182d;
+  --accent-soft: #ffffff;
+
+  --danger: #7a1f18;
+  --danger-bg: #ffffff;
+  --danger-border: #7a1f18;
+  --success: #1f4d1a;
+  --success-bg: #ffffff;
+  --success-border: #1f4d1a;
+  --warning: #6b4300;
+  --warning-bg: #ffffff;
+  --warning-border: #6b4300;
+  --info: #24182d;
+  --info-bg: #ffffff;
+  --info-border: #24182d;
+
+  --chrome-bg: #24182d;
+  --chrome-bg-2: #24182d;
+  --admin-accent: #ffffff;
+
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --focus-outline: 3px solid #24182d;
+}
+
+/* The paper glow and decorative gradients are the first thing to go. */
+html[data-contrast='high'] body::before {
+  display: none;
+}
+
+html[data-contrast='high']
+  :is(
+    .app-sidebar,
+    .app-topbar,
+    .app-main,
+    .card,
+    .dialog,
+    .a11y-settings,
+    .btn,
+    .icon-btn,
+    .input,
+    .app-profile,
+    .side-nav__link,
+    .a11y-settings__size,
+    .a11y-settings__switch-row
+  ) {
+  background-image: none;
+}
+
+html[data-contrast='high'] .app-sidebar {
+  background: var(--chrome-bg);
+}
+
+html[data-contrast='high'] .app-topbar {
+  background: var(--surface);
+  border-bottom: 2px solid var(--border);
+  backdrop-filter: none;
+}
+
+html[data-contrast='high']
+  :is(
+    .btn,
+    .icon-btn,
+    .input,
+    .card,
+    .dialog,
+    .app-profile,
+    .a11y-settings__size,
+    .a11y-settings__switch-row
+  ) {
+  border-width: 2px;
+  border-style: solid;
+  border-color: var(--border);
+}
+
+html[data-contrast='high'] .side-nav__link {
+  color: #ffffff;
+}
+
+html[data-contrast='high'] .side-nav__link--active {
+  background: var(--chrome-bg);
+  border: 2px solid #ffffff;
+  color: #ffffff;
+}
+
+html[data-contrast='high'] .side-nav__link--active .icon,
+html[data-contrast='high'] .side-nav__link:hover .icon {
+  color: #ffffff;
+}
+
+html[data-contrast='high'] .side-nav__section,
+html[data-contrast='high'] .side-nav__badge {
+  color: #ffffff;
+}
+
+html[data-contrast='high'] .side-nav__badge,
+html[data-contrast='high'] .app-profile {
+  border: 2px solid #ffffff;
+}
+
+html[data-contrast='high'] .app-sidebar :is(.btn, .icon-btn, .app-sidebar__logout) {
+  border: 2px solid #ffffff;
+}
+
+html[data-contrast='high'] :focus-visible {
+  outline: 3px solid var(--border);
+  outline-offset: 2px;
+}
+
+html[data-contrast='high'] .app-sidebar :focus-visible {
+  outline-color: #ffffff;
+}
+
+/* ------------------------------------------------------------------ *
+ * 3. Dyslexia-friendly reading
+ * ------------------------------------------------------------------ */
+html[data-dyslexia='true'] {
+  --font-sans: 'OpenDyslexic', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'OpenDyslexic', ui-serif, Georgia, serif;
+}
+
+html[data-dyslexia='true'] body {
+  letter-spacing: 0.05em;
+  word-spacing: 0.16em;
+  line-height: 1.8;
+}
+
+html[data-dyslexia='true']
+  :is(
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6,
+    p,
+    li,
+    a,
+    button,
+    input,
+    textarea,
+    select,
+    label,
+    span,
+    strong,
+    em,
+    small,
+    td,
+    th,
+    dt,
+    dd
+  ) {
+  letter-spacing: 0.05em;
+  word-spacing: 0.16em;
+}
+
+html[data-dyslexia='true'] :is(h1, h2, h3, h4) {
+  line-height: 1.5;
+}
+
+html[data-dyslexia='true'] :is(p, li) {
+  line-height: 1.8;
+}
+
+/* ------------------------------------------------------------------ *
+ * 4. Underline links
+ * ------------------------------------------------------------------ */
+html[data-underline-links='true'] a,
+html[data-underline-links='true'] a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ------------------------------------------------------------------ *
+ * 5. Sidebar trigger
+ * ------------------------------------------------------------------ */
+.side-nav__link--button {
+  width: 100%;
+  background: transparent;
+  font-family: inherit;
+  font-size: var(--text-sm);
+  line-height: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* ------------------------------------------------------------------ *
+ * 6. The settings panel
+ * ------------------------------------------------------------------ */
+.a11y-settings {
+  width: min(100%, 560px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  box-shadow: var(--shadow-lg);
+  color: var(--text);
+}
+
+.a11y-settings__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-5) 0;
+}
+
+.a11y-settings__title {
+  margin: 0 0 0.35rem;
+  font-family: var(--font-display);
+  font-size: clamp(1.45rem, 1.2rem + 0.7vw, 1.75rem);
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: var(--plum);
+}
+
+.a11y-settings__subtitle {
+  margin: 0;
+  max-width: 34rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.a11y-settings__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  overflow-y: auto;
+}
+
+.a11y-settings__group-label {
+  margin: 0 0 0.55rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.a11y-settings__sizes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.a11y-settings__size {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 5.4rem;
+  padding: 0.75rem 0.5rem 0.65rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  font-family: inherit;
+  cursor: pointer;
+  transition:
+    background var(--transition),
+    border-color var(--transition),
+    box-shadow var(--transition);
+}
+
+.a11y-settings__size:hover {
+  background: var(--surface-muted);
+  border-color: var(--border-strong);
+}
+
+.a11y-settings__size--active {
+  background: var(--lilac);
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.a11y-settings__size-glyph {
+  font-family: var(--font-display);
+  font-weight: 500;
+  line-height: 1;
+  color: var(--plum);
+}
+
+.a11y-settings__size-glyph--default {
+  font-size: 1.15rem;
+}
+
+.a11y-settings__size-glyph--large {
+  font-size: 1.55rem;
+}
+
+.a11y-settings__size-glyph--xl {
+  font-size: 1.95rem;
+}
+
+.a11y-settings__size-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.a11y-settings__size--active .a11y-settings__size-label {
+  color: var(--plum);
+}
+
+.a11y-settings__switches {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.a11y-settings__switch-row {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  width: 100%;
+  padding: 0.7rem 0.85rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--transition),
+    border-color var(--transition);
+}
+
+.a11y-settings__switch-row:hover {
+  background: var(--surface-muted);
+}
+
+.a11y-settings__switch-row--on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.a11y-settings__switch-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 2.35rem;
+  height: 2.35rem;
+  border-radius: 10px;
+  background: var(--lilac);
+  color: var(--plum-soft);
+}
+
+.a11y-settings__switch-text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.a11y-settings__switch-title {
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.a11y-settings__switch-description {
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.a11y-settings__track {
+  position: relative;
+  flex: none;
+  width: 2.55rem;
+  height: 1.5rem;
+  border-radius: var(--radius-pill);
+  background: var(--border-strong);
+  transition: background var(--transition);
+}
+
+.a11y-settings__thumb {
+  position: absolute;
+  top: 0.17rem;
+  left: 0.19rem;
+  width: 1.16rem;
+  height: 1.16rem;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgba(53, 38, 63, 0.28);
+  transition: transform var(--transition);
+}
+
+.a11y-settings__switch-row--on .a11y-settings__track {
+  background: var(--plum);
+}
+
+.a11y-settings__switch-row--on .a11y-settings__thumb {
+  transform: translateX(1.01rem);
+}
+
+.a11y-settings__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5) var(--space-5);
+  border-top: 1px solid var(--border);
+}
+
+/* ------------------------------------------------------------------ *
+ * 7. Panel under high contrast
+ * ------------------------------------------------------------------ */
+html[data-contrast='high'] .a11y-settings {
+  background: var(--surface);
+  border: 2px solid var(--border);
+  box-shadow: none;
+}
+
+html[data-contrast='high'] .a11y-settings__title {
+  color: var(--plum);
+}
+
+html[data-contrast='high']
+  :is(
+    .a11y-settings__subtitle,
+    .a11y-settings__group-label,
+    .a11y-settings__switch-description
+  ) {
+  color: var(--text-muted);
+}
+
+html[data-contrast='high'] :is(.a11y-settings__size, .a11y-settings__switch-row) {
+  background: var(--surface);
+  border: 2px solid var(--border);
+}
+
+html[data-contrast='high'] .a11y-settings__size--active {
+  background: var(--surface);
+  border-color: var(--border);
+  box-shadow: inset 0 0 0 2px var(--border);
+}
+
+html[data-contrast='high'] .a11y-settings__size--active :is(.a11y-settings__size-glyph, .a11y-settings__size-label) {
+  color: var(--plum);
+}
+
+html[data-contrast='high'] .a11y-settings__switch-icon {
+  background: var(--surface);
+  border: 2px solid var(--border);
+  color: var(--border);
+}
+
+html[data-contrast='high'] .a11y-settings__track {
+  background: var(--surface);
+  border: 2px solid var(--border);
+}
+
+html[data-contrast='high'] .a11y-settings__thumb {
+  top: 0.11rem;
+  left: 0.13rem;
+  width: 1.02rem;
+  height: 1.02rem;
+  background: var(--border);
+  box-shadow: none;
+}
+
+html[data-contrast='high'] .a11y-settings__switch-row--on :is(.a11y-settings__track, .a11y-settings__thumb) {
+  background: var(--border);
+}
+
+html[data-contrast='high'] .a11y-settings__switch-row--on .a11y-settings__thumb {
+  background: var(--surface);
+}
+
+html[data-contrast='high'] .a11y-settings__footer {
+  border-top: 2px solid var(--border);
+}
+
+/* ------------------------------------------------------------------ *
+ * 8. Small screens
+ * ------------------------------------------------------------------ */
+@media (max-width: 560px) {
+  .a11y-settings__header,
+  .a11y-settings__body,
+  .a11y-settings__footer {
+    padding-inline: var(--space-4);
+  }
+
+  .a11y-settings__sizes {
+    gap: var(--space-2);
+  }
+
+  .a11y-settings__footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .a11y-settings__footer .btn {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .a11y-settings,
+  .a11y-settings__size,
+  .a11y-settings__switch-row,
+  .a11y-settings__track,
+  .a11y-settings__thumb {
+    animation: none;
+    transition: none;
+  }
+}
