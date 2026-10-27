@@ -16,6 +16,45 @@
     />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>MEMORA</title>
+    <script>
+      // Applied before the first paint so a saved size/contrast mode never
+      // flashes. Mirrors src/hooks/useAccessibility.ts (key "a11y-settings").
+      ;(function () {
+        var root = document.documentElement
+        var systemContrast = false
+        try {
+          systemContrast = window.matchMedia('(prefers-contrast: more)').matches
+        } catch (error) {
+          systemContrast = false
+        }
+        var settings = null
+        try {
+          var raw = window.localStorage.getItem('a11y-settings')
+          var parsed = raw ? JSON.parse(raw) : null
+          if (parsed && typeof parsed === 'object') {
+            settings = parsed
+          }
+        } catch (error) {
+          settings = null
+        }
+        var textSize =
+          settings && (settings.textSize === 'large' || settings.textSize === 'xl')
+            ? settings.textSize
+            : 'default'
+        var highContrast =
+          settings && typeof settings.highContrast === 'boolean'
+            ? settings.highContrast
+            : systemContrast
+        root.setAttribute('data-text-size', textSize)
+        if (highContrast) root.setAttribute('data-contrast', 'high')
+        if (settings && settings.dyslexia === true) {
+          root.setAttribute('data-dyslexia', 'true')
+        }
+        if (settings && settings.underlineLinks === true) {
+          root.setAttribute('data-underline-links', 'true')
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

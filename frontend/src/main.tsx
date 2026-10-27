@@ -3,7 +3,10 @@ import { createRoot } from 'react-dom/client'
 
 import { App } from './app/App'
 import { initAccessibilityPreferences } from './utils/accessibilityPreferences'
+import '@fontsource/opendyslexic/latin-400.css'
+import '@fontsource/opendyslexic/latin-700.css'
 import './styles/global.css'
+import './styles/accessibility.css'
 
 const rootElement = document.getElementById('root')
 if (!rootElement) {
