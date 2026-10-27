@@ -10,6 +10,7 @@ export const SPEECH_UNSUPPORTED_NOTICE_ID = 'speech-unsupported-notice'
 const FIELD_TITLE: Record<SpeechField, string> = {
   transcript: 'transcript',
   summary: 'summary',
+  assistant: 'assistant answer',
 }
 
 interface ReadAloudControlsProps {

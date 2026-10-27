@@ -57,6 +57,7 @@ const EMPTY_PATTERNS: EmotionalPatterns = {
 
 const COMPANION_PATH = '/api/summaries/companion/'
 const PATTERNS_PATH = '/api/summaries/patterns/'
+const VOICE_PATH = '/api/summaries/companion-voice-preferences/'
 
 interface FetchCall {
   url: string
@@ -71,6 +72,9 @@ function installFetch(
     const call = { url: String(input), init: init ?? {} }
     if (call.url.endsWith(PATTERNS_PATH)) {
       return jsonResponse(patterns)
+    }
+    if (call.url.endsWith(VOICE_PATH)) {
+      return jsonResponse({ gender: 'feminine', language: 'fr-FR', rate: 1 })
     }
     return handler(call)
   })

@@ -12,9 +12,13 @@ from apps.journal.models import JournalEntry
 
 from .models import (
     BOOK_THEME_CHOICES,
+    COMPANION_VOICE_GENDER_CHOICES,
+    COMPANION_VOICE_LANGUAGE_CHOICES,
+    COMPANION_VOICE_RATES,
     COVER_STYLE_CHOICES,
     FONT_STYLE_CHOICES,
     BookPreference,
+    CompanionVoicePreference,
     Summary,
     validate_themes,
 )
@@ -166,3 +170,24 @@ class BookPreferenceSerializer(serializers.ModelSerializer):
     class Meta:
         model = BookPreference
         fields = ["cover_style", "theme_id", "font_style"]
+
+
+class CompanionVoicePreferenceSerializer(serializers.ModelSerializer):
+    """Portable voice settings for the authenticated user's companion.
+
+    Voice names are deliberately not accepted or stored: the actual device
+    voice is resolved in the browser. ``owner`` is bound by the view only.
+    """
+
+    gender = serializers.ChoiceField(choices=COMPANION_VOICE_GENDER_CHOICES)
+    language = serializers.ChoiceField(choices=COMPANION_VOICE_LANGUAGE_CHOICES)
+    rate = serializers.FloatField(min_value=0.75, max_value=1.5)
+
+    class Meta:
+        model = CompanionVoicePreference
+        fields = ["gender", "language", "rate"]
+
+    def validate_rate(self, value):
+        if not any(abs(value - rate) < 1e-9 for rate in COMPANION_VOICE_RATES):
+            raise serializers.ValidationError("Choose a supported reading speed.")
+        return value

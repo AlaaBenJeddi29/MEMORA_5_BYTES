@@ -4,12 +4,23 @@ import { Alert } from '../../../components/Alert'
 import { Button } from '../../../components/Button'
 import { Icon } from '../../../components/Icon'
 import { LoadingState } from '../../../components/LoadingState'
+import { useSpeech, useStopSpeechOnLeave } from '../../../hooks/useSpeech'
 import { normalizeApiError, type NormalizedErrors } from '../../../services/errors'
 import { companionApi } from '../../../services/companion'
-import type { CompanionAnswer } from '../../../types/companion'
+import type { CompanionAnswer, CompanionVoiceGender } from '../../../types/companion'
 import type { Summary } from '../../../types/summaries'
 import { SummaryDetailDialog } from '../../summaries/components/SummaryDetailDialog'
 import { CompanionSourceCard } from './CompanionSourceCard'
+import { CompanionVoiceSettings } from './CompanionVoiceSettings'
+import { useBrowserVoices } from '../useBrowserVoices'
+import { useCompanionVoicePreferences } from '../useCompanionVoicePreferences'
+import {
+  ANSWER_SPEECH_KEY,
+  VOICE_GENDER_LABELS,
+  previewSpeechKey,
+  previewText,
+  resolveCompanionVoice,
+} from '../voice'
 
 const MIN_QUESTION_LENGTH = 3
 const MAX_QUESTION_LENGTH = 500
@@ -42,11 +53,102 @@ export function MemoryCompanion() {
 
   const requestRef = useRef<AbortController | null>(null)
 
+  const {
+    preferences: voicePreference,
+    loading: voiceLoading,
+    loadFailed: voiceLoadFailed,
+    save: saveVoicePreference,
+    saveError: voiceSaveError,
+    saveStatus: voiceSaveStatus,
+    update: updateVoicePreference,
+    isDirty: voicePreferenceDirty,
+  } = useCompanionVoicePreferences()
+  const voices = useBrowserVoices()
+  const speech = useSpeech()
+  useStopSpeechOnLeave()
+
+  const answerActive = speech.isReading(ANSWER_SPEECH_KEY)
+  const answerPaused = speech.isPaused(ANSWER_SPEECH_KEY)
+  const answerReading = answerActive && !answerPaused
+  const previewingGender =
+    (['feminine', 'masculine'] as const).find((gender) =>
+      speech.isReading(previewSpeechKey(gender)),
+    ) ?? null
+  const resolvedVoice = resolveCompanionVoice(voices, voicePreference)
+  const answerSpeechError =
+    speech.state.errorKey === ANSWER_SPEECH_KEY ? speech.state.error : null
+  const previewSpeechError =
+    speech.state.errorKey === previewSpeechKey('feminine') ||
+    speech.state.errorKey === previewSpeechKey('masculine')
+      ? speech.state.error
+      : null
+  const answerVoiceLabel = resolvedVoice.voice
+    ? resolvedVoice.genderMatched
+      ? `voix ${VOICE_GENDER_LABELS[voicePreference.gender]} (${resolvedVoice.voice.name})`
+      : `${resolvedVoice.voice.name} (genre non déclaré)`
+    : 'voix par défaut du navigateur'
+
   useEffect(() => {
     return () => {
       requestRef.current?.abort()
     }
   }, [])
+
+  function stopReadingForSettingsChange() {
+    if (speech.state.status !== 'idle') {
+      speech.stop()
+    }
+  }
+
+  function handleVoiceChange(patch: Parameters<typeof updateVoicePreference>[0]) {
+    stopReadingForSettingsChange()
+    updateVoicePreference(patch)
+  }
+
+  function handlePreview(gender: CompanionVoiceGender) {
+    if (!speech.supported) {
+      return
+    }
+    const key = previewSpeechKey(gender)
+    if (speech.isReading(key)) {
+      speech.stop()
+      return
+    }
+    const target = resolveCompanionVoice(voices, {
+      ...voicePreference,
+      gender,
+    })
+    speech.start({
+      key,
+      field: 'assistant',
+      text: previewText(voicePreference.language),
+      voiceLang: voicePreference.language,
+      rate: voicePreference.rate,
+      voice: target.voice,
+    })
+  }
+
+  function handleListen() {
+    if (!answer || !speech.supported) {
+      return
+    }
+    if (answerReading) {
+      speech.pause()
+      return
+    }
+    if (answerPaused) {
+      speech.resume()
+      return
+    }
+    speech.start({
+      key: ANSWER_SPEECH_KEY,
+      field: 'assistant',
+      text: answer.answer,
+      voiceLang: voicePreference.language,
+      rate: voicePreference.rate,
+      voice: resolvedVoice.voice,
+    })
+  }
 
   async function ask(rawQuestion: string) {
     const cleaned = rawQuestion.trim()
@@ -59,6 +161,7 @@ export function MemoryCompanion() {
     const controller = new AbortController()
     requestRef.current = controller
 
+    speech.stop()
     setFieldError(null)
     setErrors(null)
     setAnswer(null)
@@ -172,6 +275,22 @@ export function MemoryCompanion() {
         </div>
       </div>
 
+      <CompanionVoiceSettings
+        supported={speech.supported}
+        voices={voices}
+        preference={voicePreference}
+        onChange={handleVoiceChange}
+        onPreview={handlePreview}
+        previewingGender={previewingGender}
+        previewError={previewSpeechError}
+        onSave={() => void saveVoicePreference()}
+        isDirty={voicePreferenceDirty}
+        loading={voiceLoading}
+        loadFailed={voiceLoadFailed}
+        saveStatus={voiceSaveStatus}
+        saveError={voiceSaveError}
+      />
+
       <div
         className="companion-result"
         aria-live="polite"
@@ -226,6 +345,62 @@ export function MemoryCompanion() {
             </div>
 
             <p className="companion-answer__text">{answer.answer}</p>
+
+            <div className="companion-listen">
+              <div className="companion-listen__actions">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={!speech.supported}
+                  onClick={handleListen}
+                >
+                  <Icon
+                    name={answerReading ? 'pause' : answerPaused ? 'play' : 'volume'}
+                    size={14}
+                  />
+                  {answerReading
+                    ? 'Mettre en pause'
+                    : answerPaused
+                      ? 'Reprendre l’écoute'
+                      : 'Écouter'}
+                </Button>
+                {answerActive && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => speech.stop()}
+                  >
+                    <Icon name="stop" size={14} />
+                    Arrêter
+                  </Button>
+                )}
+              </div>
+
+              <p className="companion-listen__status" role="status" aria-live="polite">
+                {!speech.supported ? (
+                  'La lecture vocale n’est pas disponible dans ce navigateur.'
+                ) : answerActive ? (
+                  <>
+                    <Icon name="wave" size={13} />
+                    {answerPaused ? 'Lecture en pause' : 'Lecture en cours'} ·{' '}
+                    {answerVoiceLabel}
+                  </>
+                ) : (
+                  <>
+                    <Icon name="volume" size={13} />
+                    Voix utilisée : {answerVoiceLabel}.
+                  </>
+                )}
+              </p>
+
+              {answerSpeechError && (
+                <p className="companion-listen__error" role="alert">
+                  {answerSpeechError}
+                </p>
+              )}
+            </div>
 
             {answer.insufficient_information && (
               <p className="companion-answer__note">

@@ -20,7 +20,7 @@
 import { announce } from './announcements'
 
 export type SpeechStatus = 'idle' | 'playing' | 'paused'
-export type SpeechField = 'transcript' | 'summary'
+export type SpeechField = 'transcript' | 'summary' | 'assistant'
 
 export interface SpeechState {
   status: SpeechStatus
@@ -38,6 +38,12 @@ export interface SpeakRequest {
   text: string
   /** ISO 639-1 code detected by the AI (`language_code`), e.g. "fr". */
   lang?: string | null
+  /** BCP 47 tag chosen by the user, e.g. "fr-FR". */
+  voiceLang?: string | null
+  /** A device voice resolved by the caller; null lets the engine fall back. */
+  voice?: SpeechSynthesisVoice | null
+  /** Reading speed; 1 is the browser default. */
+  rate?: number
 }
 
 export const UNSUPPORTED_MESSAGE =
@@ -49,6 +55,7 @@ const MAX_CHUNK_CHARS = 180
 export const SPEECH_LABELS: Record<SpeechField, string> = {
   transcript: 'transcript',
   summary: 'summary',
+  assistant: 'assistant answer',
 }
 
 let state: SpeechState = { status: 'idle', key: null, error: null, errorKey: null }
@@ -196,7 +203,9 @@ export function speak(request: SpeakRequest): void {
   generation += 1
   const ownGeneration = generation
 
-  const voice = pickVoice(request.lang)
+  const lang = request.voiceLang ?? request.lang
+  const voice = request.voice ?? pickVoice(lang)
+  const rate = Math.min(Math.max(request.rate ?? 1, 0.5), 2)
   const chunks = splitIntoChunks(text)
   let finished = 0
 
@@ -208,8 +217,8 @@ export function speak(request: SpeakRequest): void {
     if (voice) {
       utterance.voice = voice
     }
-    utterance.lang = voice?.lang ?? request.lang ?? ''
-    utterance.rate = 1
+    utterance.lang = voice?.lang ?? lang ?? ''
+    utterance.rate = rate
     utterance.pitch = 1
 
     utterance.onend = () => {
