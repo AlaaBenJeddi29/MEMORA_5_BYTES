@@ -16,6 +16,7 @@ const NAV_ITEMS: Array<{ to: string; label: string; end: boolean; icon: IconName
   { to: '/app/journal', label: 'Journal', end: false, icon: 'book' },
   { to: '/app/audio', label: 'Voice memos', end: false, icon: 'mic' },
   { to: '/app/summaries', label: 'Reflections', end: false, icon: 'sparkles' },
+  { to: '/app/companion', label: 'Companion', end: false, icon: 'compass' },
   { to: '/app/media', label: 'Media library', end: false, icon: 'image' },
   { to: '/app/people', label: 'People', end: false, icon: 'users' },
 ]
@@ -25,6 +26,7 @@ const SECTION_LABELS: Record<string, string> = {
   '/app/journal': 'Journal',
   '/app/audio': 'Voice memos',
   '/app/summaries': 'Reflections',
+  '/app/companion': 'Companion',
   '/app/media': 'Media library',
   '/app/people': 'People',
   '/app/account': 'My account',

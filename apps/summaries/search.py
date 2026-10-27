@@ -527,5 +527,7 @@ def search_user_summaries(user: Any, query: str) -> list[SearchHit]:
     client-supplied user identifier is accepted.
     """
 
-    summaries = Summary.objects.filter(owner=user).select_related("owner")
+    summaries = Summary.objects.filter(owner=user).select_related(
+        "owner", "journal_entry"
+    )
     return rank_summaries(summaries, query)

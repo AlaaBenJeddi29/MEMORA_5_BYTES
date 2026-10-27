@@ -231,8 +231,8 @@ def generate_summary(
         if isinstance(entry, JournalEntryInput)
         else JournalEntryInput.from_entry(entry)
     )
-    resolved_config = _validate_config(config or load_config())
-    resolved_client = client or _build_client(resolved_config)
+    resolved_config = validate_config(config or load_config())
+    resolved_client = client or build_client(resolved_config)
 
     try:
         response = resolved_client.models.generate_content(
@@ -241,12 +241,54 @@ def generate_summary(
             config=_build_generation_config(),
         )
     except Exception as exc:
-        raise _normalize_provider_error(exc) from exc
+        raise normalize_provider_error(exc) from exc
 
-    return _validate_payload(_extract_payload(response))
+    return _validate_payload(extract_json_object(response))
 
 
-def _validate_config(config: GeminiConfig) -> GeminiConfig:
+def request_structured(
+    contents: str,
+    *,
+    system_instruction: str,
+    response_schema: types.Schema,
+    client: Any | None = None,
+    config: GeminiConfig | None = None,
+    temperature: float = TEMPERATURE,
+    max_output_tokens: int = MAX_OUTPUT_TOKENS,
+) -> Mapping[str, Any]:
+    """Run one owner-scoped, structured Gemini request.
+
+    This is the shared entry point for features beyond summary generation. It
+    reuses the same configuration, client construction, timeout/retry policy,
+    JSON extraction, and safe provider-error mapping, so there is only one
+    Gemini integration in the codebase.
+    """
+
+    resolved_config = validate_config(config or load_config())
+    resolved_client = client or build_client(resolved_config)
+
+    generation_config = types.GenerateContentConfig(
+        system_instruction=system_instruction,
+        temperature=temperature,
+        max_output_tokens=max_output_tokens,
+        response_mime_type="application/json",
+        response_schema=response_schema,
+        automatic_continuation=False,
+    )
+
+    try:
+        response = resolved_client.models.generate_content(
+            model=resolved_config.model,
+            contents=contents,
+            config=generation_config,
+        )
+    except Exception as exc:
+        raise normalize_provider_error(exc) from exc
+
+    return extract_json_object(response)
+
+
+def validate_config(config: GeminiConfig) -> GeminiConfig:
     api_key = config.api_key.strip()
     model = config.model.strip()
     if not api_key:
@@ -266,7 +308,7 @@ def _validate_config(config: GeminiConfig) -> GeminiConfig:
     )
 
 
-def _build_client(config: GeminiConfig) -> genai.Client:
+def build_client(config: GeminiConfig) -> genai.Client:
     return genai.Client(
         api_key=config.api_key,
         http_options=types.HttpOptions(
@@ -305,7 +347,7 @@ def _build_prompt(entry: JournalEntryInput) -> str:
     )
 
 
-def _extract_payload(response: Any) -> Mapping[str, Any]:
+def extract_json_object(response: Any) -> Mapping[str, Any]:
     parsed = getattr(response, "parsed", None)
     if isinstance(parsed, dict):
         return parsed
@@ -403,7 +445,7 @@ def _clean_themes(value: Any) -> list[str]:
     return themes
 
 
-def _normalize_provider_error(exc: Exception) -> SummaryServiceError:
+def normalize_provider_error(exc: Exception) -> SummaryServiceError:
     code = getattr(exc, "code", None)
 
     if isinstance(exc, errors.ClientError):

@@ -17,9 +17,11 @@ from rest_framework.views import APIView
 
 from .journal_provider import JournalEntryNotFound, journal_provider
 from .models import BookPreference, Summary
+from .patterns import build_emotional_patterns
 from .search import EmptySearchQuery, search_user_summaries
 from .serializers import (
     BookPreferenceSerializer,
+    CompanionQuestionSerializer,
     GenerateSummarySerializer,
     SummarySearchHitSerializer,
     SummarySearchQuerySerializer,
@@ -33,6 +35,11 @@ from .services import (
     SummaryResponseError,
     SummaryServiceError,
     generate_summary,
+)
+from .services.companion import (
+    CompanionQuestionError,
+    CompanionResponseError,
+    answer_question,
 )
 
 logger = logging.getLogger(__name__)
@@ -283,3 +290,101 @@ class SummaryGenerateView(APIView):
             SummarySerializer(summary).data,
             status=status.HTTP_201_CREATED,
         )
+
+
+class MemoryCompanionView(APIView):
+    """Answer a question from the caller's own summaries.
+
+    The request body contains only the question. Ownership always comes from
+    ``request.user``; no user identifier or summary ID is accepted. When no
+    relevant summary is found, the service returns an honest "not enough
+    information" answer without calling Gemini.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        request_serializer = CompanionQuestionSerializer(data=request.data)
+        request_serializer.is_valid(raise_exception=True)
+        question = request_serializer.validated_data["question"]
+
+        try:
+            result = answer_question(request.user, question)
+        except CompanionQuestionError:
+            return Response(
+                {"detail": "Enter a valid question about your memories."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except CompanionResponseError:
+            logger.warning("Memory companion returned an invalid response.")
+            return Response(
+                {"detail": "The companion returned an invalid response."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        except SummaryConfigurationError:
+            logger.error("Memory companion is not configured.")
+            return Response(
+                {"detail": "The memory companion is not configured on the server."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except SummaryRateLimitError:
+            logger.warning("Memory companion was rate limited.")
+            return Response(
+                {"detail": "The memory companion is temporarily rate limited."},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+        except SummaryResponseError:
+            logger.warning("Memory companion provider returned invalid output.")
+            return Response(
+                {"detail": "The companion returned an invalid response."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        except SummaryProviderError:
+            logger.warning("Memory companion provider failed.")
+            return Response(
+                {"detail": "The memory companion is temporarily unavailable."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        except SummaryServiceError:
+            logger.error("Memory companion failed.")
+            return Response(
+                {"detail": "The memory companion failed."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        except Exception as exc:
+            logger.error(
+                "Unexpected memory companion failure (%s).",
+                type(exc).__name__,
+            )
+            return Response(
+                {"detail": "The memory companion failed."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return Response(
+            {
+                "answer": result.answer,
+                "reflection_questions": result.reflection_questions,
+                "insufficient_information": result.insufficient_information,
+                "sources": [
+                    {
+                        "summary": SummarySerializer(source.summary).data,
+                        "excerpt": source.excerpt,
+                    }
+                    for source in result.sources
+                ],
+            }
+        )
+
+
+class EmotionalPatternsView(APIView):
+    """Read-only counts of the caller's stored themes, moods, and months.
+
+    No AI is involved, no content is written, and no psychological state is
+    inferred. Results are always scoped to ``request.user``.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response(build_emotional_patterns(request.user))
