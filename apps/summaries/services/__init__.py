@@ -12,6 +12,7 @@ from .gemini import (
     SummaryServiceError,
     generate_summary,
     load_config,
+    request_structured,
 )
 
 __all__ = [
@@ -26,4 +27,5 @@ __all__ = [
     "SummaryServiceError",
     "generate_summary",
     "load_config",
+    "request_structured",
 ]

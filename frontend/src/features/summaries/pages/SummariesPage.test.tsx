@@ -122,6 +122,7 @@ function searchParamsOf(call: FetchCall): URLSearchParams {
 beforeEach(() => {
   // Skip the CSRF bootstrap request; the shared client reads this cookie.
   document.cookie = 'csrftoken=test-token'
+  window.history.replaceState(null, '', '/app/summaries')
 })
 
 describe('SummariesPage', () => {
@@ -1303,5 +1304,30 @@ describe('SummariesPage memory book', () => {
     expect(callsOf(fetchMock).some((call) => call.init.method === 'PUT')).toBe(
       false,
     )
+  })
+
+  it('opens the memory book on a linked summary and clears the deep link', async () => {
+    installFetch(({ url }) => {
+      if (url.endsWith('/api/summaries/')) {
+        return jsonResponse([SUMMARY])
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    window.history.replaceState(
+      null,
+      '',
+      '/app/summaries?book=1&summary=1',
+    )
+
+    render(<SummariesPage />)
+
+    expect(
+      await screen.findByRole('button', { name: 'Close book' }),
+    ).toBeTruthy()
+    expect(
+      screen.getByRole('heading', { name: 'My Story' }),
+    ).toBeTruthy()
+    expect(screen.getByText(SUMMARY.summary_text)).toBeTruthy()
+    expect(window.location.search).toBe('')
   })
 })

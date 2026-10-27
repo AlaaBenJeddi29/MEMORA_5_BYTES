@@ -59,7 +59,11 @@ export function SummariesPage() {
   const [view, setView] = useState<PageView>('list')
   const [bookStartId, setBookStartId] = useState<number | null>(null)
   const [returnFocusId, setReturnFocusId] = useState<number | null>(null)
+  const [pendingBookStart, setPendingBookStart] = useState<{ id: number | null } | null>(
+    null,
+  )
   const restoreFocusRef = useRef(false)
+  const deepLinkHandledRef = useRef(false)
 
   useDocumentTitle(view === 'book' ? 'My Story · MEMORA' : 'Summaries · MEMORA')
 
@@ -115,6 +119,43 @@ export function SummariesPage() {
   useEffect(() => {
     void loadSummaries('initial')
   }, [loadSummaries])
+
+  // Deep link from the companion (or any page): ?book=1&summary=<id>. Reading
+  // window.location directly keeps this page renderable without a Router.
+  useEffect(() => {
+    if (deepLinkHandledRef.current) {
+      return
+    }
+    const params = new URLSearchParams(window.location.search)
+    const summaryParam = params.get('summary')
+    if (params.get('book') !== '1' && summaryParam === null) {
+      return
+    }
+
+    deepLinkHandledRef.current = true
+    const parsed = summaryParam === null ? null : Number(summaryParam)
+    const id =
+      parsed !== null && Number.isInteger(parsed) && parsed > 0 ? parsed : null
+    setPendingBookStart({ id })
+    window.history.replaceState(
+      null,
+      '',
+      `${window.location.pathname}${window.location.hash}`,
+    )
+  }, [])
+
+  // Wait for the summaries so the book can open on the requested page instead
+  // of mounting on the cover with an empty list.
+  useEffect(() => {
+    if (!pendingBookStart || status !== 'ready') {
+      return
+    }
+    setHighlightedSummaryId(null)
+    setBookStartId(pendingBookStart.id)
+    setReturnFocusId(pendingBookStart.id)
+    setView('book')
+    setPendingBookStart(null)
+  }, [pendingBookStart, status])
 
   useEffect(() => {
     return () => {
