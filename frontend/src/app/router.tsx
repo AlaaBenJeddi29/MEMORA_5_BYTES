@@ -14,6 +14,7 @@ import { AdminUsersPage } from '../features/admin/pages/AdminUsersPage'
 import { AudioListPage } from '../features/audio/pages/AudioListPage'
 import { LoginPage } from '../features/auth/pages/LoginPage'
 import { RegisterPage } from '../features/auth/pages/RegisterPage'
+import { MemoryCompanionPage } from '../features/companion/pages/MemoryCompanionPage'
 import { DashboardPage } from '../features/dashboard/pages/DashboardPage'
 import { JournalListPage } from '../features/journal/pages/JournalListPage'
 import { AdvancedSearchPage } from '../features/journal/pages/AdvancedSearchPage'
@@ -70,6 +71,7 @@ const router = createBrowserRouter(
                 { path: 'app/journal/search', element: <AdvancedSearchPage /> },
                 { path: 'app/audio', element: <AudioListPage /> },
                 { path: 'app/summaries', element: <SummariesPage /> },
+                { path: 'app/companion', element: <MemoryCompanionPage /> },
                 { path: 'app/media', element: <MediaLibraryPage /> },
                 { path: 'app/people', element: <PeoplePage /> },
                 { path: 'app/people/photos', element: <MyPhotosPage /> },

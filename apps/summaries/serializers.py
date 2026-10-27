@@ -19,6 +19,7 @@ from .models import (
     validate_themes,
 )
 from .search import MAX_QUERY_LENGTH
+from .services.companion import MAX_QUESTION_LENGTH, MIN_QUESTION_LENGTH
 
 MAX_SUMMARY_TEXT_LENGTH = 4_000
 MAX_ILLUSTRATION_PROMPT_LENGTH = 1_000
@@ -126,6 +127,27 @@ class GenerateSummarySerializer(serializers.Serializer):
     journal_entry_id = serializers.IntegerField(
         min_value=1,
         max_value=MAX_JOURNAL_ENTRY_ID,
+    )
+
+
+class CompanionQuestionSerializer(serializers.Serializer):
+    """Validates the question sent to the AI Memory Companion."""
+
+    question = serializers.CharField(
+        max_length=MAX_QUESTION_LENGTH,
+        min_length=MIN_QUESTION_LENGTH,
+        allow_blank=False,
+        trim_whitespace=True,
+        error_messages={
+            "required": "Enter a question about your memories.",
+            "blank": "Enter a question about your memories.",
+            "min_length": (
+                f"Enter a question of at least {MIN_QUESTION_LENGTH} characters."
+            ),
+            "max_length": (
+                f"Keep the question to {MAX_QUESTION_LENGTH} characters or fewer."
+            ),
+        },
     )
 
 
