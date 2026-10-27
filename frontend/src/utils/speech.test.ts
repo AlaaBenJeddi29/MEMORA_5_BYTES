@@ -171,6 +171,45 @@ describe('speak', () => {
     expect(getSpeechState().status).toBe('playing')
     expect(getSpeechState().error).toBeNull()
   })
+
+  it('uses the device voice, language tag, and speed chosen by the caller', () => {
+    const englishVoice = { lang: 'en-US', name: 'Alex' } as SpeechSynthesisVoice
+
+    speak({
+      key: 'companion:answer',
+      field: 'assistant',
+      text: 'A calm reflection about your week.',
+      voiceLang: 'fr-FR',
+      voice: englishVoice,
+      rate: 1.25,
+    })
+
+    expect(stub.utterances[0].voice).toBe(englishVoice)
+    expect(stub.utterances[0].lang).toBe('en-US')
+    expect(stub.utterances[0].rate).toBe(1.25)
+    expect(getLatestAnnouncement()?.text).toContain('assistant answer')
+  })
+
+  it('lets the chosen BCP 47 tag override the detected language code', () => {
+    speak({
+      key: 'companion:answer',
+      field: 'assistant',
+      text: 'Bonjour.',
+      lang: 'fr',
+      voiceLang: 'en-US',
+    })
+
+    expect(stub.utterances[0].voice?.name).toBe('Alex')
+    expect(stub.utterances[0].lang).toBe('en-US')
+  })
+
+  it('clamps a speed outside the engine range', () => {
+    speak({ key: '7:transcript', field: 'transcript', text: 'Bonjour.', lang: 'fr', rate: 5 })
+    expect(stub.utterances[0].rate).toBe(2)
+
+    speak({ key: '7:transcript', field: 'transcript', text: 'Bonjour.', lang: 'fr', rate: 0.1 })
+    expect(stub.utterances[1].rate).toBe(0.5)
+  })
 })
 
 describe('pause, resume and stop', () => {

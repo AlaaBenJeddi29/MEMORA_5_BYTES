@@ -1,9 +1,12 @@
 import type {
   CompanionAnswer,
   CompanionQuestionInput,
+  CompanionVoicePreference,
   EmotionalPatterns,
 } from '../types/companion'
 import { apiRequest } from './apiClient'
+
+const VOICE_PREFERENCES_PATH = '/api/summaries/companion-voice-preferences/'
 
 /**
  * AI Memory Companion API. Both requests are owner-scoped by Django. The
@@ -23,5 +26,18 @@ export const companionApi = {
   patterns: (options: { signal?: AbortSignal } = {}) =>
     apiRequest<EmotionalPatterns>('/api/summaries/patterns/', {
       signal: options.signal,
+    }),
+
+  /** GET /api/summaries/companion-voice-preferences/ — portable voice settings. */
+  voicePreferences: (options: { signal?: AbortSignal } = {}) =>
+    apiRequest<CompanionVoicePreference>(VOICE_PREFERENCES_PATH, {
+      signal: options.signal,
+    }),
+
+  /** PUT /api/summaries/companion-voice-preferences/ — save all voice settings. */
+  saveVoicePreferences: (input: CompanionVoicePreference) =>
+    apiRequest<CompanionVoicePreference>(VOICE_PREFERENCES_PATH, {
+      method: 'PUT',
+      body: input,
     }),
 }

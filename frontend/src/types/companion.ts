@@ -46,3 +46,14 @@ export interface EmotionalPatterns {
   method: string
   limitations: string
 }
+
+export type CompanionVoiceGender = 'feminine' | 'masculine'
+export type CompanionVoiceLanguage = 'fr-FR' | 'en-US'
+export type CompanionVoiceRate = 0.75 | 1 | 1.25 | 1.5
+
+/** Portable voice settings stored per user; the device voice is resolved locally. */
+export interface CompanionVoicePreference {
+  gender: CompanionVoiceGender
+  language: CompanionVoiceLanguage
+  rate: CompanionVoiceRate
+}

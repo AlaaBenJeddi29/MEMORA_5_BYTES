@@ -16,12 +16,13 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .journal_provider import JournalEntryNotFound, journal_provider
-from .models import BookPreference, Summary
+from .models import BookPreference, CompanionVoicePreference, Summary
 from .patterns import build_emotional_patterns
 from .search import EmptySearchQuery, search_user_summaries
 from .serializers import (
     BookPreferenceSerializer,
     CompanionQuestionSerializer,
+    CompanionVoicePreferenceSerializer,
     GenerateSummarySerializer,
     SummarySearchHitSerializer,
     SummarySearchQuerySerializer,
@@ -137,6 +138,52 @@ class BookPreferenceView(APIView):
         preference = BookPreference.objects.filter(owner=request.user).first()
         serializer = BookPreferenceSerializer(
             preference or BookPreference(owner=request.user),
+            data=request.data,
+            partial=partial,
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save(owner=request.user)
+        return Response(serializer.data)
+
+
+class CompanionVoicePreferenceView(APIView):
+    """Read, update, or reset the caller's companion voice settings.
+
+    Ownership comes only from ``request.user``. Reading before the first save
+    returns model defaults without creating a row. No key, voice name, or
+    device identifier is stored.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        preference = CompanionVoicePreference.objects.filter(
+            owner=request.user
+        ).first()
+        if preference is None:
+            preference = CompanionVoicePreference(owner=request.user)
+        return Response(CompanionVoicePreferenceSerializer(preference).data)
+
+    def put(self, request):
+        return self._save(request, partial=False)
+
+    def patch(self, request):
+        return self._save(request, partial=True)
+
+    def delete(self, request):
+        CompanionVoicePreference.objects.filter(owner=request.user).delete()
+        return Response(
+            CompanionVoicePreferenceSerializer(
+                CompanionVoicePreference(owner=request.user)
+            ).data
+        )
+
+    def _save(self, request, partial):
+        preference = CompanionVoicePreference.objects.filter(
+            owner=request.user
+        ).first()
+        serializer = CompanionVoicePreferenceSerializer(
+            preference or CompanionVoicePreference(owner=request.user),
             data=request.data,
             partial=partial,
         )

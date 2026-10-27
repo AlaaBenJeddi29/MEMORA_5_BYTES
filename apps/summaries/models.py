@@ -31,6 +31,21 @@ FONT_STYLE_CHOICES = (
     ("handwritten", "Handwritten"),
 )
 
+COMPANION_VOICE_GENDER_CHOICES = (
+    ("feminine", "Feminine"),
+    ("masculine", "Masculine"),
+)
+
+COMPANION_VOICE_LANGUAGE_CHOICES = (
+    ("fr-FR", "French"),
+    ("en-US", "English"),
+)
+
+COMPANION_VOICE_RATES = (0.75, 1.0, 1.25, 1.5)
+COMPANION_VOICE_RATE_CHOICES = tuple(
+    (rate, f"{rate:g}x") for rate in COMPANION_VOICE_RATES
+)
+
 
 def validate_themes(value):
     """Validate the JSON list stored in ``Summary.themes``.
@@ -134,3 +149,40 @@ class BookPreference(models.Model):
 
     def __str__(self):
         return f"Book preferences for {self.owner}"
+
+
+class CompanionVoicePreference(models.Model):
+    """The caller's preferred reading voice for the AI Memory Companion.
+
+    Only portable settings are stored: gender, language, and speed. The actual
+    ``SpeechSynthesisVoice`` depends on the device and is resolved in the
+    browser, so a voice name or URI would not be portable across devices.
+    """
+
+    owner = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="companion_voice_preference",
+    )
+    gender = models.CharField(
+        max_length=16,
+        choices=COMPANION_VOICE_GENDER_CHOICES,
+        default="feminine",
+    )
+    language = models.CharField(
+        max_length=8,
+        choices=COMPANION_VOICE_LANGUAGE_CHOICES,
+        default="fr-FR",
+    )
+    rate = models.FloatField(
+        choices=COMPANION_VOICE_RATE_CHOICES,
+        default=1.0,
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "companion voice preference"
+        verbose_name_plural = "companion voice preferences"
+
+    def __str__(self):
+        return f"Companion voice preferences for {self.owner}"

@@ -8,6 +8,7 @@ from django.urls import path
 
 from .views import (
     BookPreferenceView,
+    CompanionVoicePreferenceView,
     EmotionalPatternsView,
     MemoryCompanionView,
     SummaryDetailView,
@@ -21,6 +22,11 @@ urlpatterns = [
         "book-preferences/",
         BookPreferenceView.as_view(),
         name="summaries-book-preferences",
+    ),
+    path(
+        "companion-voice-preferences/",
+        CompanionVoicePreferenceView.as_view(),
+        name="summaries-companion-voice-preferences",
     ),
     path("search/", SummarySearchView.as_view(), name="summaries-search"),
     path("generate/", SummaryGenerateView.as_view(), name="summaries-generate"),
